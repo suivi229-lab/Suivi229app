@@ -1,0 +1,21 @@
+Agis en tant qu'expert d'élite Full-Stack React, TypeScript et Supabase. Nous reconstruisons l'application "Suivi 229+" pour en faire un CRM, Logiciel de Stock, Facturation et Comptabilité complet pour une entreprise de gestion de flotte et de télématique au Bénin. L'authentification par formulaire est temporairement désactivée pour valider d'abord l'interconnexion complète avec les tables Supabase.
+
+Configure l'application selon cette structure modulaire stricte :
+
+1. INITIALISATION TECHNIQUE & DIAGNOSTIC :
+- Le fichier d'initialisation Supabase doit impérativement lire `import.meta.env.VITE_SUPABASE_URL` et `import.meta.env.VITE_SUPABASE_ANON_KEY`.
+- Ajoute des logs clairs à l'écran si ces clés ne sont pas lues. Gère le bypass de la connexion dans `AuthContext.tsx` en injectant l'utilisateur administrateur par défaut : `{ id: '3e12e6c4-9563-4449-a949-0501ee77bd42', role: 'Admin', full_name: 'BOUKOUMI AKOFE SYLVAIN GBEFFAN', email: 'gbeffansylvain@gmail.com' }`. Force l'état de chargement à false.
+
+2. CONCEPTION DE L'INTERFACE GLOBALE (Thème Sombre Professionnel) :
+Génère une Sidebar de navigation principale réactive contenant les modules suivants :
+- Tableau de bord (Vue d'ensemble avec KPIs : Chiffre d'Affaires, Nombre de clients, Alerte rupture de stock, Matériel installé).
+- Module CRM / Clients (Tableau avec liste des clients, gestion des fiches et bouton d'ajout de client relié à `public.clients`).
+- Module Gestion de Stock (Tableau pour suivre le matériel : Traceurs, SIM, Accessoires. Formulaire d'ajout et mise à jour des quantités relié à `public.stocks`).
+- Module Flotte & Matériel installé (Liaison des traceurs IMEI et numéros SIM aux véhicules des clients relié à `public.vehicules`).
+- Module Facturation & Comptabilité (Liste des factures émises, montants, filtres par statut de paiement 'Payé' / 'En attente' et enregistrement d'un paiement relié à `public.factures`).
+
+3. SYNCHRONISATION DES FLUX DE DONNÉES :
+- Écris pour chaque module les fonctions asynchrones de lecture (`.select()`) et d'écriture (`.insert()`).
+- Incorpore une gestion rigoureuse des erreurs. Si une transaction comptable, un ajout de stock ou une fiche client échoue à monter dans Supabase, intercepte l'erreur et affiche-la en rouge dans l'interface pour permettre le débogage visuel direct.
+
+Génère l'intégralité du code et structure proprement les dossiers et les composants pour que l'application soit pleinement interactive et opérationnelle.
