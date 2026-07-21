@@ -1,16 +1,17 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { createClient } from '@supabase/supabase-js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 // ── Plugin : Admin API endpoint (Node.js côté serveur) ──────────────────────
-// Crée les utilisateurs via l'Admin API Supabase (service_role key).
-// Le navigateur n'appelle que POST /api/create-member — la service_role key
-// n'est JAMAIS exposée au client, et la session admin n'est jamais touchée.
+// Utilise fetch natif (Node ≥ 18) + l'API REST Supabase directement,
+// sans instancier le client Supabase JS (qui crashe sur Node < 22 à cause
+// de l'absence de WebSocket natif lors de l'init Realtime).
 function supabaseAdminApiPlugin() {
   return {
     name: 'supabase-admin-api',
-    configureServer(server: { middlewares: { use: (path: string, fn: (req: IncomingMessage, res: ServerResponse) => void) => void } }) {
+    configureServer(server: {
+      middlewares: { use: (path: string, fn: (req: IncomingMessage, res: ServerResponse) => void) => void };
+    }) {
       server.middlewares.use(
         '/api/create-member',
         async (req: IncomingMessage, res: ServerResponse) => {
@@ -23,22 +24,16 @@ function supabaseAdminApiPlugin() {
           }
 
           // Lire le body
-          const body = await new Promise<string>((resolve, reject) => {
+          const rawBody = await new Promise<string>((resolve, reject) => {
             let data = '';
             req.on('data', (chunk: Buffer) => { data += chunk.toString(); });
             req.on('end', () => resolve(data));
             req.on('error', reject);
           });
 
-          let payload: {
-            email: string;
-            password: string;
-            name: string;
-            role: string;
-            adminToken: string;
-          };
+          let payload: { email: string; password: string; name: string; role: string; adminToken: string };
           try {
-            payload = JSON.parse(body);
+            payload = JSON.parse(rawBody);
           } catch {
             res.statusCode = 400;
             res.end(JSON.stringify({ error: 'Corps de requête invalide.' }));
@@ -47,73 +42,88 @@ function supabaseAdminApiPlugin() {
 
           const { email, password, name, role, adminToken } = payload;
 
-          const supabaseUrl     = process.env.VITE_SUPABASE_URL;
-          const serviceRoleKey  = process.env.SUPABASE_SERVICE_ROLE_KEY;
+          const supabaseUrl    = process.env.VITE_SUPABASE_URL?.replace(/\/$/, '');
+          const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
           if (!supabaseUrl || !serviceRoleKey) {
             res.statusCode = 500;
-            res.end(JSON.stringify({
-              error: 'Configuration serveur manquante. Ajoutez SUPABASE_SERVICE_ROLE_KEY dans les secrets Replit.',
-            }));
+            res.end(JSON.stringify({ error: 'SUPABASE_SERVICE_ROLE_KEY manquant dans les secrets Replit.' }));
             return;
           }
 
-          // Client Admin — pas de persistance de session locale
-          const admin = createClient(supabaseUrl, serviceRoleKey, {
-            auth: { autoRefreshToken: false, persistSession: false },
+          const authHeaders = {
+            'Content-Type': 'application/json',
+            'apikey':        serviceRoleKey,
+            'Authorization': `Bearer ${serviceRoleKey}`,
+          };
+
+          // 1. Vérifier que l'appelant est authentifié
+          const callerRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+            headers: {
+              'apikey':        serviceRoleKey,
+              'Authorization': `Bearer ${adminToken}`,
+            },
           });
 
-          // Vérifier que l'appelant est bien un Admin connecté
-          const { data: { user: caller }, error: authErr } = await admin.auth.getUser(adminToken);
-          if (authErr || !caller) {
+          if (!callerRes.ok) {
             res.statusCode = 401;
             res.end(JSON.stringify({ error: 'Session invalide ou expirée.' }));
             return;
           }
 
-          const { data: callerProfile } = await admin
-            .from('profiles')
-            .select('role')
-            .eq('id', caller.id)
-            .single();
+          const callerUser = await callerRes.json() as { id: string };
 
-          if (callerProfile?.role !== 'Admin') {
+          // 2. Vérifier que l'appelant est Admin
+          const profileRes = await fetch(
+            `${supabaseUrl}/rest/v1/profiles?id=eq.${callerUser.id}&select=role&limit=1`,
+            { headers: authHeaders },
+          );
+          const profiles = await profileRes.json() as Array<{ role: string }>;
+
+          if (!profiles.length || profiles[0].role !== 'Admin') {
             res.statusCode = 403;
             res.end(JSON.stringify({ error: 'Réservé aux administrateurs.' }));
             return;
           }
 
-          // Créer l'utilisateur via l'Admin API
+          // 3. Créer l'utilisateur via l'Admin API
           // → GoTrue ne diffuse pas d'événement de session aux autres clients
-          const { data: created, error: createErr } = await admin.auth.admin.createUser({
-            email,
-            password,
-            email_confirm: true,
-            user_metadata: { full_name: name },
+          const createRes = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({
+              email,
+              password,
+              email_confirm: true,
+              user_metadata: { full_name: name },
+            }),
           });
 
-          if (createErr) {
+          if (!createRes.ok) {
+            const err = await createRes.json() as { message?: string; msg?: string };
             res.statusCode = 400;
-            res.end(JSON.stringify({ error: createErr.message }));
+            res.end(JSON.stringify({ error: err.message ?? err.msg ?? 'Erreur de création.' }));
             return;
           }
 
-          // Créer/mettre à jour le profil
-          const { error: profileErr } = await admin
-            .from('profiles')
-            .upsert(
-              { id: created.user.id, full_name: name, role, email, is_active: true },
-              { onConflict: 'id' },
-            );
+          const newUser = await createRes.json() as { id: string };
 
-          if (profileErr) {
+          // 4. Créer / mettre à jour le profil
+          const upsertRes = await fetch(`${supabaseUrl}/rest/v1/profiles`, {
+            method: 'POST',
+            headers: { ...authHeaders, 'Prefer': 'resolution=merge-duplicates' },
+            body: JSON.stringify({ id: newUser.id, full_name: name, role, email, is_active: true }),
+          });
+
+          if (!upsertRes.ok) {
+            const err = await upsertRes.json() as { message?: string };
             res.statusCode = 400;
-            res.end(JSON.stringify({ error: profileErr.message }));
+            res.end(JSON.stringify({ error: err.message ?? 'Erreur lors de la création du profil.' }));
             return;
           }
 
           res.statusCode = 200;
-          res.end(JSON.stringify({ success: true, userId: created.user.id }));
+          res.end(JSON.stringify({ success: true, userId: newUser.id }));
         },
       );
     },
