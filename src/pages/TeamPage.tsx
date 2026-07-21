@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+
+// Client temporaire isolé pour créer des comptes membres sans affecter
+// la session admin du client principal (persistSession: false = pas de localStorage)
+const supabaseSignup = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
+  { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
+);
 import Modal from '../components/Modal';
 import {
   Plus, Users, Shield, Wrench, Eye, TrendingUp,
@@ -94,64 +103,28 @@ export default function TeamPage() {
       const userEmail = form.email.trim() ||
         `${form.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '')}.${Date.now()}@suivi229.local`;
 
-      // ── Stratégie anti-race-condition ──────────────────────────────────────
-      // supabase.auth.signUp() connecte automatiquement le nouveau compte,
-      // ce qui déclenche onAuthStateChange → fetchProfile(nouveauMembre).
-      // Si le profil n'existe pas encore, fetchProfile appelle signOut(),
-      // ce qui efface la session Admin juste restaurée.
-      // Solution : on signe out le nouveau compte AVANT de restaurer l'Admin,
-      // puis on fait l'upsert avec la session Admin confirmée.
-      // ────────────────────────────────────────────────────────────────────
-
-      // 1. Sauvegarder la session Admin
-      const { data: { session: adminSession } } = await supabase.auth.getSession();
-
-      // 2. Créer le compte du nouveau membre
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // Client isolé (supabaseSignup) : persistSession=false → pas de localStorage
+      // → la session admin du client principal n'est jamais touchée.
+      const { data: authData, error: authError } = await supabaseSignup.auth.signUp({
         email: userEmail,
         password: form.password,
         options: { data: { full_name: form.name.trim() } },
       });
 
       if (authError) {
-        // Restaurer la session Admin même en cas d'erreur
-        if (adminSession) {
-          await supabase.auth.setSession({
-            access_token: adminSession.access_token,
-            refresh_token: adminSession.refresh_token,
-          });
-        }
         setError(`Erreur d'authentification : ${authError.message}`);
         return;
       }
 
       const newUser = authData?.user;
       if (!newUser) {
-        if (adminSession) {
-          await supabase.auth.setSession({
-            access_token: adminSession.access_token,
-            refresh_token: adminSession.refresh_token,
-          });
-        }
         setError('Impossible de lier le compte utilisateur.');
         return;
       }
 
-      // 3. Déconnecter immédiatement le nouveau compte avant que fetchProfile
-      //    puisse déclencher un signOut intempestif qui effacerait la session Admin
-      await supabase.auth.signOut();
-
-      // 4. Restaurer la session Admin
-      if (adminSession) {
-        await supabase.auth.setSession({
-          access_token: adminSession.access_token,
-          refresh_token: adminSession.refresh_token,
-        });
-      }
-
-      // 5. Upsert du profil avec la session Admin confirmée
-      // Le trigger Supabase crée déjà la ligne profiles au moment du signUp ;
-      // on la met à jour avec le rôle et le nom choisis par l'Admin.
+      // Upsert via le client admin principal (session admin intacte)
+      // Le trigger Supabase crée déjà une ligne profiles au signUp ;
+      // on la met à jour avec le rôle et le nom voulus.
       const { error: insertError } = await supabase.from('profiles').upsert({
         id: newUser.id,
         full_name: form.name.trim(),
@@ -166,9 +139,7 @@ export default function TeamPage() {
         setSuccess(`✅ ${form.name} ajouté avec succès ! Email de connexion : ${userEmail}`);
         setForm({ name: '', role: 'Technicien', email: '', password: '' });
         setShowAdd(false);
-        // Rechargement de la page après 1,5 s : la session Admin est dans
-        // le localStorage après setSession, la liste s'affiche correctement.
-        setTimeout(() => window.location.reload(), 1500);
+        loadMembers();
       }
     } catch {
       setError('Erreur inattendue lors de la création du membre.');
