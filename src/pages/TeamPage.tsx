@@ -94,18 +94,54 @@ export default function TeamPage() {
       const userEmail = form.email.trim() ||
         `${form.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '')}.${Date.now()}@suivi229.local`;
 
-      // ⚠️ Sauvegarder la session Admin AVANT signUp :
-      // supabase.auth.signUp() remplace automatiquement la session courante
-      // par celle du nouveau compte, ce qui déconnecte l'Admin et vide la liste.
+      // ── Stratégie anti-race-condition ──────────────────────────────────────
+      // supabase.auth.signUp() connecte automatiquement le nouveau compte,
+      // ce qui déclenche onAuthStateChange → fetchProfile(nouveauMembre).
+      // Si le profil n'existe pas encore, fetchProfile appelle signOut(),
+      // ce qui efface la session Admin juste restaurée.
+      // Solution : on signe out le nouveau compte AVANT de restaurer l'Admin,
+      // puis on fait l'upsert avec la session Admin confirmée.
+      // ────────────────────────────────────────────────────────────────────
+
+      // 1. Sauvegarder la session Admin
       const { data: { session: adminSession } } = await supabase.auth.getSession();
 
+      // 2. Créer le compte du nouveau membre
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: userEmail,
         password: form.password,
         options: { data: { full_name: form.name.trim() } },
       });
 
-      // Restaurer la session Admin immédiatement après le signUp
+      if (authError) {
+        // Restaurer la session Admin même en cas d'erreur
+        if (adminSession) {
+          await supabase.auth.setSession({
+            access_token: adminSession.access_token,
+            refresh_token: adminSession.refresh_token,
+          });
+        }
+        setError(`Erreur d'authentification : ${authError.message}`);
+        return;
+      }
+
+      const newUser = authData?.user;
+      if (!newUser) {
+        if (adminSession) {
+          await supabase.auth.setSession({
+            access_token: adminSession.access_token,
+            refresh_token: adminSession.refresh_token,
+          });
+        }
+        setError('Impossible de lier le compte utilisateur.');
+        return;
+      }
+
+      // 3. Déconnecter immédiatement le nouveau compte avant que fetchProfile
+      //    puisse déclencher un signOut intempestif qui effacerait la session Admin
+      await supabase.auth.signOut();
+
+      // 4. Restaurer la session Admin
       if (adminSession) {
         await supabase.auth.setSession({
           access_token: adminSession.access_token,
@@ -113,20 +149,9 @@ export default function TeamPage() {
         });
       }
 
-      if (authError) {
-        setError(`Erreur d'authentification : ${authError.message}`);
-        return;
-      }
-
-      const newUser = authData?.user;
-      if (!newUser) {
-        setError('Impossible de lier le compte utilisateur.');
-        return;
-      }
-
-      // Le trigger Supabase crée déjà la ligne profiles au moment du signUp.
-      // On utilise upsert pour mettre à jour le rôle et le nom sans conflit.
-      // S'exécute maintenant avec la session Admin restaurée.
+      // 5. Upsert du profil avec la session Admin confirmée
+      // Le trigger Supabase crée déjà la ligne profiles au moment du signUp ;
+      // on la met à jour avec le rôle et le nom choisis par l'Admin.
       const { error: insertError } = await supabase.from('profiles').upsert({
         id: newUser.id,
         full_name: form.name.trim(),
