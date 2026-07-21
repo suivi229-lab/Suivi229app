@@ -166,7 +166,9 @@ export default function TeamPage() {
         setSuccess(`✅ ${form.name} ajouté avec succès ! Email de connexion : ${userEmail}`);
         setForm({ name: '', role: 'Technicien', email: '', password: '' });
         setShowAdd(false);
-        loadMembers();
+        // Rechargement de la page après 1,5 s : la session Admin est dans
+        // le localStorage après setSession, la liste s'affiche correctement.
+        setTimeout(() => window.location.reload(), 1500);
       }
     } catch {
       setError('Erreur inattendue lors de la création du membre.');
