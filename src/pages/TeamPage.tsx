@@ -68,10 +68,11 @@ export default function TeamPage() {
 
   async function loadMembers() {
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('id, full_name, role, email, is_active, updated_at')
       .order('role');
+    console.log('[TeamPage] loadMembers → data:', data, '| error:', error);
     setMembers((data as TeamMember[]) || []);
     setLoading(false);
   }
