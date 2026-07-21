@@ -6,7 +6,7 @@ export type UserRole = 'Admin' | 'Technicien' | 'Observateur' | 'Investisseur';
 
 // ─────────────────────────────────────────────────────────
 // BYPASS_AUTH — mettre à `false` pour réactiver la sécurité
-const BYPASS_AUTH = true;
+const BYPASS_AUTH = false;
 // ─────────────────────────────────────────────────────────
 
 const OWNER_EMAIL = 'gbeffansylvain@gmail.com';
@@ -120,13 +120,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
   // ── FIN BYPASS ───────────────────────────────────────────
 
-  // Returns true if the account is deactivated (caller handles signOut)
+  // Returns true if the caller should sign the user out.
   async function fetchProfile(userId: string, userEmail?: string): Promise<boolean> {
     const isOwner = userEmail?.toLowerCase() === OWNER_EMAIL.toLowerCase();
-    const fallbackProfile: Profile = {
+
+    // Fallback profile is ONLY granted to the known owner email.
+    // Any other user without a valid DB profile is denied access (signed out).
+    const ownerFallback: Profile = {
       id: userId,
       role: 'Admin',
-      full_name: isOwner ? 'Sylvain' : (userEmail ? userEmail.split('@')[0] : 'Sylvain'),
+      full_name: 'Sylvain',
       is_active: true,
     };
 
@@ -145,11 +148,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await Promise.race([queryPromise, timeoutPromise]);
 
       if (result === null) {
-        // Timeout — use fallback, do not block
-        console.warn('[AuthContext] fetchProfile timed out — using fallback profile');
-        setIsDeactivated(false);
-        setProfile(fallbackProfile);
-        return false;
+        // Timeout
+        if (isOwner) {
+          console.warn('[AuthContext] fetchProfile timed out — owner fallback applied');
+          setIsDeactivated(false);
+          setProfile(ownerFallback);
+          return false;
+        }
+        // Non-owner with no confirmed profile → deny access
+        console.warn('[AuthContext] fetchProfile timed out — non-owner, signing out');
+        setIsDeactivated(true);
+        setProfile(null);
+        return true;
       }
 
       const { data, error } = result;
@@ -168,20 +178,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (error) {
-        console.warn('[AuthContext] fetchProfile DB error — using fallback:', error.code, error.message);
-        setIsDeactivated(false);
-        setProfile(fallbackProfile);
-        return false;
+        // No profile row found or DB error
+        if (isOwner) {
+          console.warn('[AuthContext] fetchProfile DB error — owner fallback applied:', error.code);
+          setIsDeactivated(false);
+          setProfile(ownerFallback);
+          return false;
+        }
+        // Non-owner without a profile row → deny access
+        console.warn('[AuthContext] fetchProfile DB error — non-owner, signing out:', error.code);
+        setIsDeactivated(true);
+        setProfile(null);
+        return true;
       }
 
-      setIsDeactivated(false);
-      setProfile(fallbackProfile);
-      return false;
+      // Unexpected: no data and no error
+      if (isOwner) {
+        setIsDeactivated(false);
+        setProfile(ownerFallback);
+        return false;
+      }
+      setIsDeactivated(true);
+      setProfile(null);
+      return true;
     } catch (err) {
-      console.error('[AuthContext] fetchProfile exception — using fallback:', err);
-      setIsDeactivated(false);
-      setProfile(fallbackProfile);
-      return false;
+      console.error('[AuthContext] fetchProfile exception:', err);
+      if (isOwner) {
+        setIsDeactivated(false);
+        setProfile(ownerFallback);
+        return false;
+      }
+      setIsDeactivated(true);
+      setProfile(null);
+      return true;
     }
   }
 

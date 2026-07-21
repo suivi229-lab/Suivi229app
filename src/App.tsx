@@ -8,10 +8,29 @@ import StockPage from './pages/StockPage';
 import BillingPage from './pages/BillingPage';
 import InstallationPage from './pages/InstallationPage';
 import TeamPage from './pages/TeamPage';
+import LoginPage from './pages/LoginPage';
+import { Loader2 } from 'lucide-react';
 
 function AppContent() {
   const { currentPage, sidebarOpen } = useApp();
-  const { canAccess } = useAuth();
+  const { session, loading, canAccess } = useAuth();
+
+  // Écran de chargement pendant la vérification de session
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={32} className="animate-spin text-blue-600" />
+          <p className="text-sm text-gray-500 dark:text-gray-400">Chargement…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Pas de session → page de connexion
+  if (!session) {
+    return <LoginPage />;
+  }
 
   const pages: Record<string, React.ReactNode> = {
     dashboard: <Dashboard />,
