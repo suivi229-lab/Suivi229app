@@ -289,6 +289,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // ── Déconnexion temps réel si le compte est désactivé ────────────────────
+  // Souscription Realtime filtrée sur le profil de l'utilisateur courant.
+  // Dès qu'un admin passe is_active = false, la session est fermée côté client
+  // sans attendre un rechargement de page.
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel(`profile-active:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${user.id}`,
+        },
+        (payload) => {
+          const updated = payload.new as { is_active?: boolean };
+          console.log('[AuthContext] Realtime profile UPDATE:', updated);
+          if (updated.is_active === false && !pendingSignOut.current) {
+            console.log('[AuthContext] Account deactivated remotely — signing out');
+            pendingSignOut.current = true;
+            setIsDeactivated(true);
+            supabase.auth.signOut().finally(() => { pendingSignOut.current = false; });
+          }
+        },
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id]);
+
   async function signIn(email: string, password: string) {
     console.log('[Auth] signIn attempt for:', email);
     setIsDeactivated(false);
