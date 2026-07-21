@@ -72,7 +72,6 @@ export default function TeamPage() {
       .from('profiles')
       .select('id, full_name, role, email, is_active, updated_at')
       .order('role');
-    console.log('[TeamPage] loadMembers → data:', data, '| error:', error);
     setMembers((data as TeamMember[]) || []);
     setLoading(false);
   }
@@ -91,29 +90,44 @@ export default function TeamPage() {
     setSuccess('');
 
     try {
+      // Récupérer le token de la session admin courante
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (!currentSession?.access_token) {
+        setError('Session expirée. Veuillez vous reconnecter.');
+        return;
+      }
+
       const userEmail = form.email.trim() ||
         `${form.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '')}.${Date.now()}@suivi229.local`;
 
-      // Appel de la fonction PostgreSQL SECURITY DEFINER :
-      // crée l'utilisateur dans auth.users + son profil côté serveur,
-      // sans toucher à la session admin du client.
-      const { error: rpcError } = await supabase.rpc('create_team_member', {
-        p_email:    userEmail,
-        p_password: form.password,
-        p_name:     form.name.trim(),
-        p_role:     form.role,
+      // Appel au endpoint Node.js côté serveur (jamais exécuté dans le navigateur).
+      // L'Admin API Supabase crée l'utilisateur sans émettre d'événement GoTrue
+      // vers le client — la session admin reste intacte.
+      const res = await fetch('/api/create-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email:      userEmail,
+          password:   form.password,
+          name:       form.name.trim(),
+          role:       form.role,
+          adminToken: currentSession.access_token,
+        }),
       });
 
-      if (rpcError) {
-        setError(`Erreur lors de la création : ${rpcError.message}`);
+      const json = await res.json() as { error?: string; success?: boolean };
+
+      if (!res.ok || json.error) {
+        setError(`Erreur lors de la création : ${json.error ?? 'Erreur inconnue'}`);
       } else {
         setSuccess(`✅ ${form.name} ajouté avec succès ! Email de connexion : ${userEmail}`);
         setForm({ name: '', role: 'Technicien', email: '', password: '' });
         setShowAdd(false);
         loadMembers();
       }
-    } catch {
-      setError('Erreur inattendue lors de la création du membre.');
+    } catch (err) {
+      console.error('[addMember] exception:', err);
+      setError('Erreur réseau. Vérifiez votre connexion.');
     } finally {
       setSubmitting(false);
     }
