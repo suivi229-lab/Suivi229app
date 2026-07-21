@@ -1,14 +1,5 @@
 import { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-
-// Client temporaire isolé pour créer des comptes membres sans affecter
-// la session admin du client principal (persistSession: false = pas de localStorage)
-const supabaseSignup = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-  { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
-);
 import Modal from '../components/Modal';
 import {
   Plus, Users, Shield, Wrench, Eye, TrendingUp,
@@ -103,38 +94,18 @@ export default function TeamPage() {
       const userEmail = form.email.trim() ||
         `${form.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '')}.${Date.now()}@suivi229.local`;
 
-      // Client isolé (supabaseSignup) : persistSession=false → pas de localStorage
-      // → la session admin du client principal n'est jamais touchée.
-      const { data: authData, error: authError } = await supabaseSignup.auth.signUp({
-        email: userEmail,
-        password: form.password,
-        options: { data: { full_name: form.name.trim() } },
+      // Appel de la fonction PostgreSQL SECURITY DEFINER :
+      // crée l'utilisateur dans auth.users + son profil côté serveur,
+      // sans toucher à la session admin du client.
+      const { error: rpcError } = await supabase.rpc('create_team_member', {
+        p_email:    userEmail,
+        p_password: form.password,
+        p_name:     form.name.trim(),
+        p_role:     form.role,
       });
 
-      if (authError) {
-        setError(`Erreur d'authentification : ${authError.message}`);
-        return;
-      }
-
-      const newUser = authData?.user;
-      if (!newUser) {
-        setError('Impossible de lier le compte utilisateur.');
-        return;
-      }
-
-      // Upsert via le client admin principal (session admin intacte)
-      // Le trigger Supabase crée déjà une ligne profiles au signUp ;
-      // on la met à jour avec le rôle et le nom voulus.
-      const { error: insertError } = await supabase.from('profiles').upsert({
-        id: newUser.id,
-        full_name: form.name.trim(),
-        role: form.role,
-        email: userEmail,
-        is_active: true,
-      }, { onConflict: 'id' });
-
-      if (insertError) {
-        setError(`Erreur lors de la création du profil : ${insertError.message}`);
+      if (rpcError) {
+        setError(`Erreur lors de la création : ${rpcError.message}`);
       } else {
         setSuccess(`✅ ${form.name} ajouté avec succès ! Email de connexion : ${userEmail}`);
         setForm({ name: '', role: 'Technicien', email: '', password: '' });
