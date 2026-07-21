@@ -110,13 +110,15 @@ export default function TeamPage() {
         return;
       }
 
-      const { error: insertError } = await supabase.from('profiles').insert({
+      // Le trigger Supabase crée déjà la ligne profiles au moment du signUp.
+      // On utilise upsert pour mettre à jour le rôle et le nom sans conflit.
+      const { error: insertError } = await supabase.from('profiles').upsert({
         id: newUser.id,
         full_name: form.name.trim(),
         role: form.role,
         email: userEmail,
         is_active: true,
-      });
+      }, { onConflict: 'id' });
 
       if (insertError) {
         setError(`Erreur lors de la création du profil : ${insertError.message}`);
