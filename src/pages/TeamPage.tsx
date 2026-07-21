@@ -93,11 +93,24 @@ export default function TeamPage() {
       const userEmail = form.email.trim() ||
         `${form.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '')}.${Date.now()}@suivi229.local`;
 
+      // ⚠️ Sauvegarder la session Admin AVANT signUp :
+      // supabase.auth.signUp() remplace automatiquement la session courante
+      // par celle du nouveau compte, ce qui déconnecte l'Admin et vide la liste.
+      const { data: { session: adminSession } } = await supabase.auth.getSession();
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: userEmail,
         password: form.password,
         options: { data: { full_name: form.name.trim() } },
       });
+
+      // Restaurer la session Admin immédiatement après le signUp
+      if (adminSession) {
+        await supabase.auth.setSession({
+          access_token: adminSession.access_token,
+          refresh_token: adminSession.refresh_token,
+        });
+      }
 
       if (authError) {
         setError(`Erreur d'authentification : ${authError.message}`);
@@ -112,6 +125,7 @@ export default function TeamPage() {
 
       // Le trigger Supabase crée déjà la ligne profiles au moment du signUp.
       // On utilise upsert pour mettre à jour le rôle et le nom sans conflit.
+      // S'exécute maintenant avec la session Admin restaurée.
       const { error: insertError } = await supabase.from('profiles').upsert({
         id: newUser.id,
         full_name: form.name.trim(),
