@@ -53,8 +53,8 @@ export default function CRMPage() {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('clients');
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dbError, setDbError] = useState<string | null>(null);
-  const [writeError, setWriteError] = useState<string | null>(null);
+  const [dbError, _setDbError] = useState<string | null>(null);
+  const [writeError, _setWriteError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [expandedClient, setExpandedClient] = useState<string | null>(null);
   const [showAddClient, setShowAddClient] = useState(false);

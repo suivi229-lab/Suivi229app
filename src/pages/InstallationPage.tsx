@@ -13,8 +13,8 @@ export default function InstallationPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [dbError, setDbError] = useState<string | null>(null);
-  const [writeError, setWriteError] = useState<string | null>(null);
+  const [dbError, _setDbError] = useState<string | null>(null);
+  const [writeError, _setWriteError] = useState<string | null>(null);
 
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedVehicleId, setSelectedVehicleId] = useState('');

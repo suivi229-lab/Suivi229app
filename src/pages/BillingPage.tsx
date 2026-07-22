@@ -88,7 +88,7 @@ export default function BillingPage() {
   });
 
   const [dbError, setDbError] = useState<string | null>(null);
-  const [writeError, setWriteError] = useState<string | null>(null);
+  const [writeError, _setWriteError] = useState<string | null>(null);
 
   useEffect(() => { loadData(); }, []);
 
