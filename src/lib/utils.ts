@@ -151,52 +151,60 @@ const PRINT_CSS = `
 `;
 
 /**
- * Ouvre une nouvelle fenêtre/onglet propre et déclenche l'impression PDF.
- * Utilise un Blob URL (compatible mobile/popup-blocker).
- * Supprime automatiquement les icônes SVG, boutons et colonnes .no-print du clone.
+ * Imprime un élément DOM — fonctionne sur desktop ET mobile Android/iOS.
+ * Injecte le contenu dans la page courante et appelle window.print() directement
+ * (les Blob/popup URLs sont inaccessibles au service d'impression Android).
  */
-export function printElement(elementId: string, docTitle = 'Suivi 229+') {
+export function printElement(elementId: string, _docTitle = 'Suivi 229+') {
   const content = document.getElementById(elementId);
   if (!content) return;
 
-  // Clone sans affecter la page en cours
+  // Clone propre : supprime icônes SVG, boutons et colonnes action
   const clone = content.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll('.no-print').forEach(el => el.remove());
-  clone.querySelectorAll('svg').forEach(el => el.remove());
-  clone.querySelectorAll('button').forEach(el => el.remove());
+  clone.querySelectorAll('.no-print, svg, button').forEach(el => el.remove());
 
-  const fullHtml = `<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${docTitle}</title>
-  <style>${PRINT_CSS}</style>
-</head>
-<body style="padding:20mm;">${clone.innerHTML}</body>
-</html>`;
-
-  _openPrint(fullHtml);
+  printHTML(clone.innerHTML);
 }
 
-/** Ouvre le HTML dans un onglet et déclenche l'impression (Blob URL, compatible mobile). */
-export function _openPrint(html: string) {
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, '_blank');
-  if (win) {
-    win.addEventListener('load', () => {
-      setTimeout(() => { win.print(); URL.revokeObjectURL(url); }, 400);
-    });
-  } else {
-    // Popup bloqué (mobile) → forcer l'ouverture via <a>
-    const a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 8000);
+/**
+ * Imprime du contenu HTML arbitraire (chaîne) — même technique que printElement.
+ * À utiliser depuis AIPage et tout autre endroit qui génère du HTML manuellement.
+ */
+export function printHTML(htmlContent: string) {
+  // ── 1. Injecter le CSS d'impression ───────────────────────────────────────
+  let styleEl = document.getElementById('__print_style__') as HTMLStyleElement | null;
+  if (!styleEl) {
+    styleEl = document.createElement('style');
+    styleEl.id = '__print_style__';
+    document.head.appendChild(styleEl);
   }
+  styleEl.textContent = `
+    @media print {
+      /* Masquer toute l'app sauf le contenu à imprimer */
+      body > *:not(#__print_root__) { display: none !important; }
+      #__print_root__ { display: block !important; }
+      ${PRINT_CSS}
+    }
+    @media screen {
+      #__print_root__ { display: none !important; }
+    }
+  `;
+
+  // ── 2. Injecter le contenu ─────────────────────────────────────────────────
+  let printRoot = document.getElementById('__print_root__');
+  if (!printRoot) {
+    printRoot = document.createElement('div');
+    printRoot.id = '__print_root__';
+    document.body.appendChild(printRoot);
+  }
+  printRoot.innerHTML = htmlContent;
+
+  // ── 3. Imprimer (sur la page courante → compatible Android/iOS) ───────────
+  window.print();
+
+  // ── 4. Nettoyer après fermeture du dialogue ────────────────────────────────
+  setTimeout(() => {
+    if (printRoot) printRoot.innerHTML = '';
+    if (styleEl)  styleEl.textContent = '';
+  }, 3000);
 }

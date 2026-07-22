@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { printHTML } from '../lib/utils';
 import {
   Sparkles, Send, FileText, Mail, TrendingUp, Loader2,
   Copy, Check, RefreshCw, Bot, AlertCircle, Calculator, Printer,
@@ -103,59 +104,32 @@ async function fetchComptableData(year: number, month: number): Promise<Comptabl
   };
 }
 
-/* ─── Utilitaire PDF (impression dans nouvelle fenêtre, compatible mobile) ─── */
-function printBilan(htmlContent: string, title: string) {
-  const css = `
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; background: #fff; padding: 20mm; }
-    h1 { font-size: 17px; font-weight: 700; text-align: center; margin-bottom: 4px; color: #1a3a6b; }
-    h2 { font-size: 12px; font-weight: 700; margin: 18px 0 6px; padding-bottom: 4px;
-         border-bottom: 2px solid #1a3a6b; color: #1a3a6b; }
-    .subtitle { text-align: center; font-size: 10px; color: #666; margin-bottom: 20px; line-height: 1.6; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-    th { background: #1a3a6b !important; color: #fff !important; text-align: left;
-         padding: 6px 10px; font-size: 10px; font-weight: 700; border: 1px solid #1a3a6b; }
-    td { padding: 5px 10px; border: 1px solid #c8d6e8; font-size: 10px; line-height: 1.4; }
-    tbody tr:nth-child(even) td { background: #f4f7fb; }
-    .right { text-align: right; }
-    .total-row td { font-weight: 700; background: #eaf0f8 !important; border-top: 2px solid #1a3a6b; }
-    .fiscal-box { border: 2px solid #1a3a6b; padding: 12px 16px; margin-top: 16px; border-radius: 4px; background: #f8fafd; }
-    .fiscal-box h2 { border: none; margin-top: 0; }
-    .fiscal-line { display: flex; justify-content: space-between; margin: 5px 0; font-size: 11px; }
-    .fiscal-line.highlight { font-weight: 700; font-size: 12px; border-top: 1.5px solid #1a3a6b;
-                             padding-top: 6px; margin-top: 10px; color: #1a3a6b; }
-    .ai-section { margin-top: 18px; padding: 12px 14px; background: #fafafa; border: 1px solid #dde3ee;
-                  border-radius: 4px; white-space: pre-wrap; line-height: 1.7; font-size: 10px; }
-    .footer { margin-top: 22px; font-size: 9px; color: #999; text-align: center;
-              border-top: 1px solid #e5e7eb; padding-top: 8px; line-height: 1.6; }
-    @media print { body { padding: 0; } @page { margin: 12mm 15mm; size: A4 portrait; } }
+/* ─── Utilitaire PDF — délègue à printHTML (compatible desktop + mobile) ─── */
+function printBilan(htmlContent: string, _title: string) {
+  // Ajouter CSS spécifique au bilan comptable autour du contenu
+  const wrapped = `
+    <style>
+      h1 { font-size: 17px; font-weight: 700; text-align: center; margin-bottom: 4px; color: #1a3a6b; }
+      h2 { font-size: 12px; font-weight: 700; margin: 18px 0 6px; padding-bottom: 4px;
+           border-bottom: 2px solid #1a3a6b; color: #1a3a6b; }
+      .subtitle { text-align: center; font-size: 10px; color: #666; margin-bottom: 20px; line-height: 1.6; }
+      .right { text-align: right; }
+      .total-row td { font-weight: 700; background: #eaf0f8 !important; border-top: 2px solid #1a3a6b; }
+      .fiscal-box { border: 2px solid #1a3a6b; padding: 12px 16px; margin-top: 16px;
+                    border-radius: 4px; background: #f8fafd; }
+      .fiscal-box h2 { border: none; margin-top: 0; }
+      .fiscal-line { display: flex; justify-content: space-between; margin: 5px 0; font-size: 11px; }
+      .fiscal-line.highlight { font-weight: 700; font-size: 12px; border-top: 1.5px solid #1a3a6b;
+                               padding-top: 6px; margin-top: 10px; color: #1a3a6b; }
+      .ai-section { margin-top: 18px; padding: 12px 14px; background: #fafafa;
+                    border: 1px solid #dde3ee; border-radius: 4px;
+                    white-space: pre-wrap; line-height: 1.7; font-size: 10px; }
+      .footer { margin-top: 22px; font-size: 9px; color: #999; text-align: center;
+                border-top: 1px solid #e5e7eb; padding-top: 8px; line-height: 1.6; }
+    </style>
+    ${htmlContent}
   `;
-
-  const fullHtml = `<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${title}</title>
-  <style>${css}</style>
-</head>
-<body>${htmlContent}</body>
-</html>`;
-
-  const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, '_blank');
-  if (win) {
-    win.addEventListener('load', () => {
-      setTimeout(() => { win.print(); URL.revokeObjectURL(url); }, 400);
-    });
-  } else {
-    // Popup bloqué (mobile) → forcer l'ouverture via <a>
-    const a = document.createElement('a');
-    a.href = url; a.target = '_blank'; a.rel = 'noopener';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 8000);
-  }
+  printHTML(wrapped);
 }
 
 /* ─── Data fetcher ───────────────────────────────────────────────────────────── */
