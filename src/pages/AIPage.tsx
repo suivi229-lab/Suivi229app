@@ -2,11 +2,11 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   Sparkles, Send, FileText, Mail, TrendingUp, Loader2,
-  Copy, Check, RefreshCw, Bot, AlertCircle,
+  Copy, Check, RefreshCw, Bot, AlertCircle, Calculator, Printer,
 } from 'lucide-react';
 
 /* ─── Types ─────────────────────────────────────────────────────────────────── */
-type Tab = 'assistant' | 'rapport' | 'email' | 'analyse';
+type Tab = 'assistant' | 'rapport' | 'email' | 'analyse' | 'comptable';
 
 interface Message {
   role: 'user' | 'model';
@@ -31,6 +31,92 @@ interface AppData {
   yearRevenue: number;
   loaded: boolean;
   error: string | null;
+}
+
+/* ─── Types comptables ───────────────────────────────────────────────────────── */
+interface TxLine {
+  description: string;
+  amount: number;
+  category: string;
+  transaction_date: string;
+  transaction_type: 'Entrée' | 'Sortie';
+}
+
+interface ComptableData {
+  entrees: TxLine[];
+  sorties: TxLine[];
+  totalEntrees: number;
+  totalSorties: number;
+  resultatBrut: number;
+  tvaCollectee: number;   // 18 % sur recettes HT
+  ibicEstime: number;     // 30 % sur bénéfice
+  loaded: boolean;
+  error: string | null;
+}
+
+async function fetchComptableData(year: number, month: number): Promise<ComptableData> {
+  const from = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const to   = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('description, amount, category, transaction_date, transaction_type')
+    .gte('transaction_date', from)
+    .lte('transaction_date', to)
+    .order('transaction_date');
+
+  if (error) throw new Error(error.message);
+
+  const rows: TxLine[] = (data ?? []).map((r: any) => ({
+    description:      r.description ?? '',
+    amount:           Number(r.amount ?? 0),
+    category:         r.category ?? 'Non catégorisé',
+    transaction_date: r.transaction_date ?? '',
+    transaction_type: r.transaction_type,
+  }));
+
+  const entrees = rows.filter(r => r.transaction_type === 'Entrée');
+  const sorties = rows.filter(r => r.transaction_type === 'Sortie');
+  const totalEntrees = entrees.reduce((s, r) => s + r.amount, 0);
+  const totalSorties = sorties.reduce((s, r) => s + r.amount, 0);
+  const resultatBrut = totalEntrees - totalSorties;
+  const tvaCollectee  = Math.round(totalEntrees * 0.18);
+  const ibicEstime    = resultatBrut > 0 ? Math.round(resultatBrut * 0.30) : 0;
+
+  return { entrees, sorties, totalEntrees, totalSorties, resultatBrut, tvaCollectee, ibicEstime, loaded: true, error: null };
+}
+
+/* ─── Utilitaire PDF (impression dans nouvelle fenêtre) ──────────────────────── */
+function printBilan(htmlContent: string, title: string) {
+  const win = window.open('', '_blank');
+  if (!win) return;
+  win.document.write(`<!DOCTYPE html><html lang="fr"><head>
+    <meta charset="UTF-8"/>
+    <title>${title}</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: 'Arial', sans-serif; font-size: 11px; color: #111; padding: 30px 40px; }
+      h1 { font-size: 16px; text-align: center; margin-bottom: 4px; }
+      h2 { font-size: 13px; margin: 18px 0 6px; border-bottom: 1.5px solid #333; padding-bottom: 3px; }
+      .subtitle { text-align: center; font-size: 11px; color: #555; margin-bottom: 20px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+      th { background: #f0f0f0; text-align: left; padding: 4px 8px; font-size: 10px; border: 1px solid #ccc; }
+      td { padding: 4px 8px; border: 1px solid #ddd; }
+      .right { text-align: right; }
+      .total-row td { font-weight: bold; background: #f9f9f9; border-top: 2px solid #999; }
+      .fiscal-box { border: 2px solid #333; padding: 12px 16px; margin-top: 16px; border-radius: 4px; }
+      .fiscal-box h2 { border: none; margin-top: 0; }
+      .fiscal-line { display: flex; justify-content: space-between; margin: 4px 0; }
+      .fiscal-line.highlight { font-weight: bold; font-size: 12px; border-top: 1px solid #999; padding-top: 4px; margin-top: 8px; }
+      .ai-section { margin-top: 20px; padding: 12px; background: #fafafa; border: 1px solid #ddd; border-radius: 4px; white-space: pre-wrap; line-height: 1.6; }
+      .footer { margin-top: 24px; font-size: 9px; color: #888; text-align: center; border-top: 1px solid #eee; padding-top: 8px; }
+      @media print { @page { margin: 15mm; } }
+    </style>
+  </head><body>${htmlContent}</body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); }, 500);
 }
 
 /* ─── Data fetcher ───────────────────────────────────────────────────────────── */
@@ -527,12 +613,293 @@ Sois concis, factuel et orienté action. Évite les généralités.`;
   );
 }
 
+/* ─── Tab: Expert Comptable ──────────────────────────────────────────────────── */
+const MOIS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
+function groupByCategory(lines: TxLine[]): { cat: string; total: number; items: TxLine[] }[] {
+  const map = new Map<string, TxLine[]>();
+  lines.forEach(l => {
+    if (!map.has(l.category)) map.set(l.category, []);
+    map.get(l.category)!.push(l);
+  });
+  return Array.from(map.entries()).map(([cat, items]) => ({
+    cat,
+    total: items.reduce((s, i) => s + i.amount, 0),
+    items,
+  })).sort((a, b) => b.total - a.total);
+}
+
+function fmt(n: number) { return n.toLocaleString('fr-FR') + ' FCFA'; }
+
+function ComptableTab() {
+  const now = new Date();
+  const [year,  setYear]  = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [cdata, setCdata] = useState<ComptableData | null>(null);
+  const [loadingData,  setLoadingData]  = useState(false);
+  const [loadingAI,    setLoadingAI]    = useState(false);
+  const [aiResult,     setAiResult]     = useState<string | null>(null);
+  const [error,        setError]        = useState<string | null>(null);
+
+  async function charger() {
+    setLoadingData(true); setError(null); setAiResult(null); setCdata(null);
+    try {
+      setCdata(await fetchComptableData(year, month));
+    } catch (e: any) { setError(e.message); }
+    finally { setLoadingData(false); }
+  }
+
+  async function genererAnalyse() {
+    if (!cdata) return;
+    setLoadingAI(true); setError(null);
+    try {
+      const entreesList = groupByCategory(cdata.entrees).map(g =>
+        `  ${g.cat} : ${fmt(g.total)} (${g.items.length} op.)`).join('\n') || '  Aucune';
+      const sortiesList = groupByCategory(cdata.sorties).map(g =>
+        `  ${g.cat} : ${fmt(g.total)} (${g.items.length} op.)`).join('\n') || '  Aucune';
+
+      const prompt = `Tu es un expert-comptable agréé spécialisé dans la fiscalité béninoise (régime OHADA, DGI Bénin).
+
+Voici le bilan financier de l'entreprise **Suivi 229+** (société de tracking GPS de véhicules, Bénin) pour le mois de **${MOIS_FR[month-1]} ${year}** :
+
+## RECETTES (${fmt(cdata.totalEntrees)})
+${entreesList}
+
+## CHARGES (${fmt(cdata.totalSorties)})
+${sortiesList}
+
+## INDICATEURS CALCULÉS
+- Résultat brut : ${fmt(cdata.resultatBrut)}
+- TVA collectée estimée (18%) : ${fmt(cdata.tvaCollectee)}
+- IBIC estimé (30% du bénéfice) : ${fmt(cdata.ibicEstime)}
+
+Sur la base de ces données, fournis un rapport d'audit comptable mensuel structuré avec :
+1. **Synthèse générale** : situation financière du mois en 3 phrases
+2. **Analyse des recettes** : commentaire sur la composition et la régularité des entrées
+3. **Analyse des charges** : commentaire sur les postes de dépenses, adéquation avec l'activité
+4. **Situation fiscale** : TVA à reverser à la DGI, acompte IBIC, autres obligations mensuelles au Bénin
+5. **Points d'attention** : anomalies, risques, irrégularités comptables à corriger
+6. **Recommandations** : 3 actions concrètes pour optimiser la situation fiscale et comptable
+7. **Conclusion** : bilan en une phrase et statut de conformité fiscale estimé
+
+Utilise un ton professionnel d'expert-comptable. Sois précis avec les montants en FCFA.`;
+
+      setAiResult(await callGemini({ prompt }));
+    } catch (e: any) { setError(e.message); }
+    finally { setLoadingAI(false); }
+  }
+
+  function exporterPDF() {
+    if (!cdata) return;
+    const titre = `Bilan Comptable — ${MOIS_FR[month-1]} ${year} — Suivi 229+`;
+    const entreesGroupes = groupByCategory(cdata.entrees);
+    const sortiesGroupes = groupByCategory(cdata.sorties);
+
+    const lignesEntrees = entreesGroupes.map(g =>
+      `<tr><td>${g.cat}</td><td class="right">${g.items.length}</td><td class="right">${fmt(g.total)}</td></tr>`
+    ).join('');
+    const lignesSorties = sortiesGroupes.map(g =>
+      `<tr><td>${g.cat}</td><td class="right">${g.items.length}</td><td class="right">${fmt(g.total)}</td></tr>`
+    ).join('');
+
+    const html = `
+      <h1>BILAN COMPTABLE MENSUEL</h1>
+      <p class="subtitle">Suivi 229+ — Tracking GPS Véhicules, Bénin<br/>Période : ${MOIS_FR[month-1]} ${year} | Généré le : ${new Date().toLocaleDateString('fr-FR')}</p>
+
+      <h2>1. RECETTES (PRODUITS)</h2>
+      <table><thead><tr><th>Catégorie</th><th class="right">Nb op.</th><th class="right">Montant</th></tr></thead><tbody>
+        ${lignesEntrees || '<tr><td colspan="3">Aucune recette</td></tr>'}
+        <tr class="total-row"><td>TOTAL RECETTES</td><td></td><td class="right">${fmt(cdata.totalEntrees)}</td></tr>
+      </tbody></table>
+
+      <h2>2. CHARGES (DÉPENSES)</h2>
+      <table><thead><tr><th>Catégorie</th><th class="right">Nb op.</th><th class="right">Montant</th></tr></thead><tbody>
+        ${lignesSorties || '<tr><td colspan="3">Aucune charge</td></tr>'}
+        <tr class="total-row"><td>TOTAL CHARGES</td><td></td><td class="right">${fmt(cdata.totalSorties)}</td></tr>
+      </tbody></table>
+
+      <div class="fiscal-box">
+        <h2>3. RÉSULTAT ET OBLIGATIONS FISCALES (estimations)</h2>
+        <div class="fiscal-line"><span>Résultat brut (Recettes − Charges)</span><span>${fmt(cdata.resultatBrut)}</span></div>
+        <div class="fiscal-line"><span>TVA collectée à reverser (18 % des recettes)</span><span>${fmt(cdata.tvaCollectee)}</span></div>
+        <div class="fiscal-line"><span>Acompte IBIC estimé (30 % du bénéfice)</span><span>${fmt(cdata.ibicEstime)}</span></div>
+        <div class="fiscal-line highlight"><span>TOTAL OBLIGATIONS FISCALES ESTIMÉES</span><span>${fmt(cdata.tvaCollectee + cdata.ibicEstime)}</span></div>
+        <div class="fiscal-line highlight"><span>RÉSULTAT NET APRÈS IMPÔT ESTIMÉ</span><span>${fmt(cdata.resultatBrut - cdata.ibicEstime)}</span></div>
+      </div>
+
+      ${aiResult ? `<div class="ai-section"><strong>ANALYSE DE L'EXPERT COMPTABLE IA</strong>\n\n${aiResult}</div>` : ''}
+
+      <div class="footer">
+        Document généré automatiquement par Suivi 229+ — À valider par un expert-comptable agréé avant dépôt officiel à la DGI Bénin.<br/>
+        Régime fiscal de référence : OHADA / DGI Bénin — TVA 18 % — IBIC 30 %
+      </div>`;
+
+    printBilan(html, titre);
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* En-tête */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h3 className="font-semibold text-gray-900 dark:text-white">Expert Comptable — Bilan fiscal mensuel</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+            Bilan OHADA structuré + analyse IA + export PDF prêt à déposer à la DGI.
+          </p>
+        </div>
+      </div>
+
+      {/* Sélecteur mois/année */}
+      <div className="flex flex-wrap gap-3 items-end">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Mois</label>
+          <select value={month} onChange={e => setMonth(Number(e.target.value))}
+            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+            {MOIS_FR.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Année</label>
+          <select value={year} onChange={e => setYear(Number(e.target.value))}
+            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+            {[2023,2024,2025,2026].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+        <button onClick={charger} disabled={loadingData}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors">
+          {loadingData ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />}
+          Charger le bilan
+        </button>
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 px-3 py-2 rounded-lg">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />{error}
+        </div>
+      )}
+
+      {/* Résultats comptables */}
+      {cdata && (
+        <div className="space-y-4">
+          {/* Résumé chiffres clés */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {[
+              { label: 'Total recettes', value: fmt(cdata.totalEntrees), color: 'text-green-700 dark:text-green-400' },
+              { label: 'Total charges',  value: fmt(cdata.totalSorties),  color: 'text-red-600 dark:text-red-400' },
+              { label: 'Résultat brut',  value: fmt(cdata.resultatBrut),  color: cdata.resultatBrut >= 0 ? 'text-brand-700 dark:text-brand-400' : 'text-red-600 dark:text-red-400' },
+              { label: 'TVA à reverser (18%)', value: fmt(cdata.tvaCollectee), color: 'text-amber-700 dark:text-amber-400' },
+              { label: 'IBIC estimé (30%)',     value: fmt(cdata.ibicEstime),    color: 'text-amber-700 dark:text-amber-400' },
+              { label: 'Résultat net estimé',  value: fmt(cdata.resultatBrut - cdata.ibicEstime), color: (cdata.resultatBrut - cdata.ibicEstime) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400' },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="bg-gray-50 dark:bg-gray-800/50 rounded-xl px-4 py-3 border border-gray-100 dark:border-gray-700">
+                <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+                <p className={`text-sm font-bold mt-0.5 ${color}`}>{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Tableau recettes par catégorie */}
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="px-4 py-2.5 bg-green-50 dark:bg-green-900/20 border-b border-gray-200 dark:border-gray-700">
+              <p className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide">Recettes — {cdata.entrees.length} opération(s)</p>
+            </div>
+            {groupByCategory(cdata.entrees).length === 0
+              ? <p className="text-sm text-gray-400 p-4">Aucune recette ce mois.</p>
+              : <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-800/50">
+                    <tr><th className="text-left px-4 py-2 text-xs text-gray-500 font-medium">Catégorie</th><th className="text-right px-4 py-2 text-xs text-gray-500 font-medium">Nb</th><th className="text-right px-4 py-2 text-xs text-gray-500 font-medium">Montant</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {groupByCategory(cdata.entrees).map(g => (
+                      <tr key={g.cat} className="bg-white dark:bg-gray-900">
+                        <td className="px-4 py-2.5 text-gray-800 dark:text-gray-200">{g.cat}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-500">{g.items.length}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-green-700 dark:text-green-400">{fmt(g.total)}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-green-50 dark:bg-green-900/20 font-bold">
+                      <td className="px-4 py-2.5 text-green-800 dark:text-green-300">TOTAL RECETTES</td>
+                      <td></td>
+                      <td className="px-4 py-2.5 text-right text-green-700 dark:text-green-400">{fmt(cdata.totalEntrees)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+            }
+          </div>
+
+          {/* Tableau charges par catégorie */}
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="px-4 py-2.5 bg-red-50 dark:bg-red-900/20 border-b border-gray-200 dark:border-gray-700">
+              <p className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide">Charges — {cdata.sorties.length} opération(s)</p>
+            </div>
+            {groupByCategory(cdata.sorties).length === 0
+              ? <p className="text-sm text-gray-400 p-4">Aucune charge ce mois.</p>
+              : <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-800/50">
+                    <tr><th className="text-left px-4 py-2 text-xs text-gray-500 font-medium">Catégorie</th><th className="text-right px-4 py-2 text-xs text-gray-500 font-medium">Nb</th><th className="text-right px-4 py-2 text-xs text-gray-500 font-medium">Montant</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {groupByCategory(cdata.sorties).map(g => (
+                      <tr key={g.cat} className="bg-white dark:bg-gray-900">
+                        <td className="px-4 py-2.5 text-gray-800 dark:text-gray-200">{g.cat}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-500">{g.items.length}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-red-600 dark:text-red-400">{fmt(g.total)}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-red-50 dark:bg-red-900/20 font-bold">
+                      <td className="px-4 py-2.5 text-red-700 dark:text-red-300">TOTAL CHARGES</td>
+                      <td></td>
+                      <td className="px-4 py-2.5 text-right text-red-600 dark:text-red-400">{fmt(cdata.totalSorties)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+            }
+          </div>
+
+          {/* Boutons actions */}
+          <div className="flex flex-wrap gap-3">
+            <button onClick={genererAnalyse} disabled={loadingAI}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors">
+              {loadingAI ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              {aiResult ? 'Regénérer l\'analyse' : 'Analyse Expert Comptable IA'}
+            </button>
+            <button onClick={exporterPDF}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gray-700 hover:bg-gray-800 dark:bg-gray-600 dark:hover:bg-gray-500 text-white text-sm font-medium transition-colors">
+              <Printer className="w-4 h-4" />
+              Télécharger PDF
+            </button>
+          </div>
+
+          {/* Résultat IA */}
+          {aiResult && (
+            <div className="rounded-xl border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-900/10 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-brand-500 to-accent-500 flex items-center justify-center">
+                  <Sparkles className="w-3 h-3 text-white" />
+                </div>
+                <span className="text-sm font-semibold text-brand-700 dark:text-brand-300">Analyse Expert Comptable IA</span>
+              </div>
+              <div className="text-sm text-gray-800 dark:text-gray-200">
+                <Markdown text={aiResult} />
+              </div>
+              <p className="mt-4 text-xs text-gray-400 italic">
+                ⚠️ Ces estimations fiscales sont indicatives. Faites valider ce bilan par un expert-comptable agréé avant dépôt officiel à la DGI Bénin.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Page principale ────────────────────────────────────────────────────────── */
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: 'assistant', label: 'Assistant', icon: Bot },
-  { id: 'rapport',   label: 'Rapport',   icon: FileText },
-  { id: 'email',     label: 'Emails',    icon: Mail },
-  { id: 'analyse',   label: 'Analyse',   icon: TrendingUp },
+  { id: 'assistant', label: 'Assistant',  icon: Bot },
+  { id: 'rapport',   label: 'Rapport',    icon: FileText },
+  { id: 'email',     label: 'Emails',     icon: Mail },
+  { id: 'analyse',   label: 'Analyse',    icon: TrendingUp },
+  { id: 'comptable', label: 'Comptable',  icon: Calculator },
 ];
 
 export default function AIPage() {
@@ -578,7 +945,7 @@ export default function AIPage() {
         </div>
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Intelligence Artificielle</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Propulsé par Google Gemini</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Propulsé par Groq · Llama 3.3 70B</p>
         </div>
       </div>
 
@@ -605,6 +972,7 @@ export default function AIPage() {
           {activeTab === 'rapport'   && <RapportTab   data={data} />}
           {activeTab === 'email'     && <EmailTab     data={data} />}
           {activeTab === 'analyse'   && <AnalyseTab   data={data} />}
+          {activeTab === 'comptable' && <ComptableTab />}
         </div>
       </div>
     </div>
