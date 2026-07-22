@@ -1,0 +1,1 @@
+- [GitHub push workflow](github-push.md) — toujours pousser sur origin/main après chaque modification ; l'utilisateur teste via Render (pas le preview Replit).
