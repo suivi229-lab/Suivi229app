@@ -14,7 +14,6 @@ interface TeamMember {
   role: UserRole;
   email?: string | null;
   is_active?: boolean | null;
-  updated_at?: string;
 }
 
 interface ConfirmDialog {
@@ -85,10 +84,11 @@ export default function TeamPage() {
 
   async function loadMembers() {
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
-      .select('id, full_name, role, email, is_active, updated_at')
+      .select('id, full_name, role, email, is_active')
       .order('role');
+    if (error) console.error('[TeamPage] loadMembers error:', error.message, error.code);
     setMembers((data as TeamMember[]) || []);
     setLoading(false);
   }
