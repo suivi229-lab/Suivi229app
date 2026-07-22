@@ -9,7 +9,7 @@ import BillingPage from './pages/BillingPage';
 import InstallationPage from './pages/InstallationPage';
 import TeamPage from './pages/TeamPage';
 import LoginPage from './pages/LoginPage';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Menu, MapPin } from 'lucide-react';
 
 function AppContent() {
   const { currentPage, sidebarOpen } = useApp();
@@ -46,7 +46,25 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-200">
       <Sidebar />
-      <main className={`transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-20'} min-h-screen`}>
+
+      {/* Barre de navigation mobile */}
+      <header className="md:hidden fixed top-0 left-0 right-0 z-20 h-14 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center px-4 gap-3">
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          aria-label="Ouvrir le menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-brand-600 flex items-center justify-center">
+            <MapPin className="w-4 h-4 text-white" />
+          </div>
+          <span className="font-bold text-gray-900 dark:text-white text-sm">Suivi 229+</span>
+        </div>
+      </header>
+
+      <main className={`transition-all duration-300 pt-14 md:pt-0 ${sidebarOpen ? 'md:ml-64' : 'md:ml-20'} min-h-screen`}>
         <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
           {pages[activePage] || <Dashboard />}
         </div>

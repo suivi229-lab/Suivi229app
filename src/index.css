@@ -82,6 +82,11 @@
   .table-cell {
     @apply px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap;
   }
+  @media (max-width: 640px) {
+    .table-cell {
+      @apply px-3 py-2;
+    }
+  }
 }
 
 .biz-header {

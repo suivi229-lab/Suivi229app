@@ -22,7 +22,7 @@ const AppContext = createContext<AppContextType>({
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const triggerRefresh = useCallback(() => {
