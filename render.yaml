@@ -2,7 +2,7 @@ services:
   - type: web
     name: suivi229app
     runtime: node
-    buildCommand: npm ci --legacy-peer-deps && npm run build
+    buildCommand: rm -rf node_modules && npm ci --legacy-peer-deps && npm run build
     startCommand: node server.js
     envVars:
       - key: NODE_VERSION
