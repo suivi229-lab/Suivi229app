@@ -15,6 +15,7 @@ interface Client {
   email: string | null;
   city: string | null;
   created_at: string;
+  created_by?: string | null;
   vehicles?: Vehicle[];
 }
 
@@ -38,6 +39,7 @@ interface Subscription {
   annual_price: number;
   tracker_id: string | null;
   sim_id: string | null;
+  installed_by?: string | null;
   vehicles?: Vehicle & { clients?: { name: string; email: string | null } };
 }
 
@@ -51,7 +53,7 @@ interface StockItem {
 type SubTab = 'clients' | 'subscriptions';
 
 export default function CRMPage() {
-  const { role } = useAuth();
+  const { role, profile, user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('clients');
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -164,6 +166,7 @@ export default function CRMPage() {
         status: computeStatus(endDate),
         annual_price: Number(subPrice),
         sim_id: subSelectedSimId || null,
+        installed_by: profile?.full_name ?? user?.email ?? null,
       });
 
       if (subSelectedSimId) {
@@ -186,7 +189,7 @@ export default function CRMPage() {
 
   async function addClient() {
     if (!newClient.name.trim()) return;
-    await supabase.from('clients').insert({ name: newClient.name, phone: newClient.phone || null, email: newClient.email || null, city: newClient.city || null });
+    await supabase.from('clients').insert({ name: newClient.name, phone: newClient.phone || null, email: newClient.email || null, city: newClient.city || null, created_by: profile?.full_name ?? user?.email ?? null });
     setNewClient({ name: '', phone: '', email: '', city: '' });
     setShowAddClient(false);
     loadClients();
@@ -237,6 +240,7 @@ export default function CRMPage() {
       end_date: endDate,
       status: computeStatus(endDate),
       annual_price: Number(newSubscription.annual_price),
+      installed_by: profile?.full_name ?? user?.email ?? null,
     });
     setShowAddSubscription(null);
     setNewSubscription({ tracker_type: 'GT06', start_date: new Date().toISOString().split('T')[0], annual_price: 75000 });
@@ -467,6 +471,7 @@ export default function CRMPage() {
                   <th className="table-header">Ville</th>
                   <th className="table-header">Véhicules</th>
                   <th className="table-header">Abonnements</th>
+                  {role === 'Admin' && <th className="table-header">Créé par</th>}
                   <th className="table-header no-print">Actions</th>
                 </tr>
               </thead>
@@ -500,6 +505,11 @@ export default function CRMPage() {
                             ))}
                           </div>
                         </td>
+                        {role === 'Admin' && (
+                          <td className="table-cell text-xs text-gray-500 dark:text-gray-400">
+                            {client.created_by || <span className="text-gray-300 dark:text-gray-600">—</span>}
+                          </td>
+                        )}
                         <td className="table-cell no-print">
                           <div className="flex items-center gap-1">
                             <button onClick={() => { setShowEditClient(client); setEditClient({ name: client.name || '', phone: client.phone || '', email: client.email || '', city: client.city || '' }); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-brand-600" title="Modifier"><Edit2 className="w-4 h-4" /></button>
@@ -513,7 +523,7 @@ export default function CRMPage() {
                       </tr>
                       {isExpanded && (
                         <tr className="bg-gray-50/50 dark:bg-gray-800/30">
-                          <td colSpan={7} className="px-6 py-4">
+                          <td colSpan={role === 'Admin' ? 8 : 7} className="px-6 py-4">
                             <div className="space-y-3">
                               {vehicles.map(v => (
                                 <div key={v.id} className="card p-4">
@@ -596,6 +606,7 @@ export default function CRMPage() {
                     <th className="table-header">Fin</th>
                     <th className="table-header">Statut</th>
                     <th className="table-header">Prix annuel</th>
+                    {role === 'Admin' && <th className="table-header">Installé par</th>}
                     <th className="table-header no-print">Actions</th>
                   </tr>
                 </thead>
@@ -615,6 +626,11 @@ export default function CRMPage() {
                         <td className="table-cell">{formatDate(sub.end_date)}</td>
                         <td className="table-cell">{getSubscriptionStatusBadge(sub.status, sub.end_date)}</td>
                         <td className="table-cell font-semibold">{formatCurrency(sub.annual_price)}</td>
+                        {role === 'Admin' && (
+                          <td className="table-cell text-xs text-gray-500 dark:text-gray-400">
+                            {sub.installed_by || <span className="text-gray-300 dark:text-gray-600">—</span>}
+                          </td>
+                        )}
                         <td className="table-cell no-print">
                           <div className="flex items-center gap-1">
                             {(sub.status === 'Expiré' || sub.status === 'Relance') && (
@@ -634,7 +650,7 @@ export default function CRMPage() {
                     );
                   })}
                   {filteredSubscriptions.length === 0 && (
-                    <tr><td colSpan={9} className="text-center py-8 text-gray-400">Aucun abonnement trouvé</td></tr>
+                    <tr><td colSpan={role === 'Admin' ? 10 : 9} className="text-center py-8 text-gray-400">Aucun abonnement trouvé</td></tr>
                   )}
                 </tbody>
               </table>

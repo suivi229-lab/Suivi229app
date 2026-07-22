@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatDate, generateInvoiceNumber, printElement, BUSINESS_INFO } from '../lib/utils';
 import { Zap, Printer, CheckCircle, Loader2 } from 'lucide-react';
 
@@ -8,6 +9,7 @@ interface Vehicle { id: string; registration: string; make_model: string | null;
 interface StockItem { id: string; item_type: string; serial_number: string; status: string }
 
 export default function InstallationPage() {
+  const { profile, user } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [stock, setStock] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,6 +87,7 @@ export default function InstallationPage() {
         annual_price: price,
         tracker_id: selectedTrackerId,
         sim_id: selectedSimId,
+        installed_by: profile?.full_name ?? user?.email ?? null,
       }).select().single();
 
       // 2. Update tracker status to "Installé"
