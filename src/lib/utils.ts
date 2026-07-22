@@ -80,51 +80,123 @@ export function exportToCSV(headers: string[], rows: string[][], filename: strin
   URL.revokeObjectURL(link.href);
 }
 
-const businessHeaderCSS = `
-  .biz-header { text-align: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #111; }
-  .biz-header h2 { font-size: 18px; font-weight: 700; margin-bottom: 2px; letter-spacing: 1px; }
-  .biz-header .biz-meta { font-size: 11px; color: #444; line-height: 1.5; }
-  .biz-header .biz-meta strong { color: #222; }
+/* ─── Impression / PDF ─────────────────────────────────────────────────────── */
+
+const PRINT_CSS = `
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; background: #fff; }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+  .table-header, thead th, th {
+    background: #1a3a6b !important; color: #fff !important;
+    padding: 7px 10px; text-align: left; font-size: 10px; font-weight: 700;
+    border: 1px solid #1a3a6b;
+  }
+  .table-cell, tbody td, td {
+    padding: 6px 10px; border: 1px solid #c8d6e8;
+    font-size: 10px; vertical-align: top; line-height: 1.4;
+  }
+  tbody tr:nth-child(even) td { background: #f4f7fb; }
+
+  /* ── Badges ── */
+  .badge-success { color: #059669; font-weight: 700; }
+  .badge-warning  { color: #b45309; font-weight: 700; }
+  .badge-danger   { color: #dc2626; font-weight: 700; }
+  .badge-info     { color: #2563eb; font-weight: 700; }
+
+  /* ── Typo ── */
+  h1 { font-size: 16px; font-weight: 700; margin: 0 0 4px; }
+  h2, h3 { font-size: 13px; font-weight: 700; margin: 14px 0 6px; }
+  p { font-size: 10px; color: #555; line-height: 1.5; }
+  strong { font-weight: 700; }
+
+  /* ── En-tête entreprise ── */
+  .biz-header { text-align: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #1a3a6b; }
+  .biz-header h2 { font-size: 17px; font-weight: 700; color: #1a3a6b; letter-spacing: 1px; margin: 0 0 4px; }
+  .biz-meta { font-size: 10px; color: #555; line-height: 1.7; }
+  .biz-meta strong { color: #222; }
+
+  /* ── Facture ── */
+  .invoice-box { max-width: 100%; }
+  .invoice-header { display: flex; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+  .invoice-info { font-size: 11px; line-height: 1.8; }
+  .invoice-total { text-align: right; font-size: 14px; font-weight: 700; margin-top: 14px; padding-top: 10px; border-top: 2px solid #1a3a6b; }
+  .status-paid      { color: #059669; font-weight: 700; }
+  .status-pending   { color: #b45309; font-weight: 700; }
+  .status-cancelled { color: #dc2626; font-weight: 700; }
+
+  /* ── Ticket ── */
+  .receipt-box { max-width: 420px; margin: 0 auto; padding: 20px; border: 2px solid #1a3a6b; }
+  .receipt-box h2 { font-size: 16px; letter-spacing: 1px; }
+  .receipt-box .line { display: flex; justify-content: space-between; padding: 5px 0; font-size: 11px; border-bottom: 1px dashed #ccc; }
+  .receipt-box .total-line { font-weight: 700; font-size: 13px; border-bottom: 2px solid #1a3a6b; }
+
+  /* ── Masquer éléments interactifs ── */
+  button, input, select, textarea, svg,
+  .no-print, [class*="no-print"] { display: none !important; }
+
+  /* ── Espacement Tailwind minimal ── */
+  .space-y-6 > * + * { margin-top: 14px; }
+  .flex { display: flex; } .gap-2 { gap: 8px; } .gap-4 { gap: 14px; }
+  .justify-between { justify-content: space-between; }
+  .text-right { text-align: right; }
+  .font-bold, .font-semibold { font-weight: 700; }
+  .text-sm { font-size: 10px; } .text-xs { font-size: 9px; }
+
+  @media print {
+    body { padding: 0; }
+    @page { margin: 12mm 15mm; size: A4 portrait; }
+  }
 `;
 
-export function printElement(elementId: string) {
+/**
+ * Ouvre une nouvelle fenêtre/onglet propre et déclenche l'impression PDF.
+ * Utilise un Blob URL (compatible mobile/popup-blocker).
+ * Supprime automatiquement les icônes SVG, boutons et colonnes .no-print du clone.
+ */
+export function printElement(elementId: string, docTitle = 'Suivi 229+') {
   const content = document.getElementById(elementId);
   if (!content) return;
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) return;
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <title>Suivi 229+</title>
-      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-      <style>
-        body { font-family: 'Inter', sans-serif; margin: 20px; color: #111; }
-        table { width: 100%; border-collapse: collapse; margin: 16px 0; }
-        th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; font-size: 13px; }
-        th { background: #f3f4f6; font-weight: 600; }
-        .header { text-align: center; margin-bottom: 20px; }
-        .header h1 { font-size: 20px; margin-bottom: 4px; }
-        .header p { font-size: 13px; color: #666; }
-        .invoice-box { max-width: 800px; margin: 0 auto; padding: 30px; border: 1px solid #eee; }
-        .invoice-header { display: flex; justify-content: space-between; margin-bottom: 30px; }
-        .invoice-info { font-size: 13px; line-height: 1.8; }
-        .invoice-total { text-align: right; font-size: 16px; font-weight: 700; margin-top: 16px; padding-top: 12px; border-top: 2px solid #111; }
-        .status-paid { color: #059669; font-weight: 600; }
-        .status-pending { color: #d97706; font-weight: 600; }
-        .status-cancelled { color: #dc2626; font-weight: 600; }
-        .receipt-box { max-width: 500px; margin: 0 auto; padding: 24px; border: 2px solid #111; text-align: center; }
-        .receipt-box h2 { font-size: 18px; margin-bottom: 4px; letter-spacing: 1px; }
-        .receipt-box .line { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; border-bottom: 1px dashed #ccc; }
-        .receipt-box .total-line { font-weight: 700; font-size: 15px; border-bottom: 2px solid #111; }
-        ${businessHeaderCSS}
-        @media print { body { margin: 0; } }
-      </style>
-    </head>
-    <body>${content.innerHTML}</body>
-    </html>
-  `);
-  printWindow.document.close();
-  setTimeout(() => { printWindow.print(); }, 500);
+
+  // Clone sans affecter la page en cours
+  const clone = content.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll('.no-print').forEach(el => el.remove());
+  clone.querySelectorAll('svg').forEach(el => el.remove());
+  clone.querySelectorAll('button').forEach(el => el.remove());
+
+  const fullHtml = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${docTitle}</title>
+  <style>${PRINT_CSS}</style>
+</head>
+<body style="padding:20mm;">${clone.innerHTML}</body>
+</html>`;
+
+  _openPrint(fullHtml);
+}
+
+/** Ouvre le HTML dans un onglet et déclenche l'impression (Blob URL, compatible mobile). */
+export function _openPrint(html: string) {
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (win) {
+    win.addEventListener('load', () => {
+      setTimeout(() => { win.print(); URL.revokeObjectURL(url); }, 400);
+    });
+  } else {
+    // Popup bloqué (mobile) → forcer l'ouverture via <a>
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+  }
 }
