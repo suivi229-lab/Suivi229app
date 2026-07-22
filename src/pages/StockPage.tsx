@@ -50,29 +50,61 @@ export default function StockPage() {
   async function addItem() {
     if (!newItem.serial_number.trim()) return;
     setWriteError(null);
-    const { error } = await supabase.from('stock').insert({ item_type: newItem.item_type, serial_number: newItem.serial_number.trim(), status: 'En Stock' });
-    if (error) { console.error('[Stock] ❌ addItem:', error.message); setWriteError(`Impossible d'ajouter l'article — ${error.message} (${error.code})`); return; }
+    const { error } = await supabase.from('stock').insert({ 
+      item_type: newItem.item_type, 
+      serial_number: newItem.serial_number.trim(), 
+      status: 'En Stock' 
+    });
+    
+    if (error) { 
+      console.error('[Stock] ❌ addItem:', error.message); 
+      setWriteError(`Impossible d'ajouter l'article — ${error.message} (${error.code})`); 
+      return; 
+    }
+    
     setNewItem({ item_type: 'Traceur GT06', serial_number: '' });
     setShowAdd(false);
     loadStock();
   }
 
   async function updateItem() {
-    if (role !== 'Admin') return;
+    if (role !== 'Admin') {
+      alert("Vous n'avez pas les droits d'administration nécessaires.");
+      return;
+    }
     if (!showEdit) return;
-    await supabase.from('stock').update({
-      item_type: editItem.item_type,
-      serial_number: editItem.serial_number,
-      status: editItem.status,
-      installed_client_name: editItem.status === 'En Stock' ? null : editItem.installed_client_name,
-    }).eq('id', showEdit.id);
+
+    setWriteError(null);
+
+    const { error } = await supabase
+      .from('stock')
+      .update({
+        item_type: editItem.item_type,
+        serial_number: editItem.serial_number,
+        status: editItem.status,
+        installed_client_name: editItem.status === 'En Stock' ? null : editItem.installed_client_name,
+      })
+      .eq('id', showEdit.id);
+
+    if (error) {
+      console.error('[Stock] ❌ updateItem:', error.message);
+      setWriteError(`Erreur lors de la mise à jour — ${error.message} (code: ${error.code})`);
+      return;
+    }
+
     setShowEdit(null);
     loadStock();
   }
 
   async function deleteItem(id: string) {
     if (!confirm('Supprimer cet élément du stock ?')) return;
-    await supabase.from('stock').delete().eq('id', id);
+    setWriteError(null);
+    const { error } = await supabase.from('stock').delete().eq('id', id);
+    if (error) {
+      console.error('[Stock] ❌ deleteItem:', error.message);
+      setWriteError(`Impossible de supprimer — ${error.message} (${error.code})`);
+      return;
+    }
     loadStock();
   }
 
@@ -97,14 +129,20 @@ export default function StockPage() {
       inserts.push({ item_type: itemType, serial_number: serial, status: 'En Stock' });
     }
     if (inserts.length > 0) {
-      await supabase.from('stock').insert(inserts);
+      const { error } = await supabase.from('stock').insert(inserts);
+      if (error) {
+        setWriteError(`Erreur d'importation CSV — ${error.message}`);
+        return;
+      }
     }
     setShowImport(false);
     loadStock();
   }
 
   const filtered = items.filter(i => {
-    const matchSearch = i.serial_number.toLowerCase().includes(search.toLowerCase()) || i.item_type.toLowerCase().includes(search.toLowerCase()) || (i.installed_client_name || '').toLowerCase().includes(search.toLowerCase());
+    const matchSearch = i.serial_number.toLowerCase().includes(search.toLowerCase()) || 
+                        i.item_type.toLowerCase().includes(search.toLowerCase()) || 
+                        (i.installed_client_name || '').toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === 'all' || i.status === filterStatus;
     return matchSearch && matchStatus;
   });
@@ -130,7 +168,7 @@ export default function StockPage() {
     <div className="space-y-6">
       {(dbError || writeError) && (
         <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 space-y-1">
-          <p className="text-sm font-semibold text-red-700 dark:text-red-400">⚠ Erreur Supabase — table <code>stocks</code></p>
+          <p className="text-sm font-semibold text-red-700 dark:text-red-400">⚠ Erreur Supabase — table <code>stock</code></p>
           {dbError && <p className="text-xs font-mono text-red-600 dark:text-red-300">{dbError}</p>}
           {writeError && <p className="text-xs font-mono text-red-600 dark:text-red-300">{writeError}</p>}
         </div>
@@ -188,8 +226,22 @@ export default function StockPage() {
                   <td className="table-cell">{item.installed_client_name || '-'}</td>
                   <td className="table-cell no-print">
                     <div className="flex items-center gap-1">
-                      {role === 'Admin' && <button onClick={() => { setShowEdit(item); setEditItem(item); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-brand-600"><Edit2 className="w-4 h-4" /></button>}
-                      {role === 'Admin' && <button onClick={() => deleteItem(item.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-500 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>}
+                      {role === 'Admin' && (
+                        <button 
+                          onClick={() => { setShowEdit(item); setEditItem(item); }} 
+                          className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-brand-600"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
+                      {role === 'Admin' && (
+                        <button 
+                          onClick={() => deleteItem(item.id)} 
+                          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-500 hover:text-red-600"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -203,14 +255,18 @@ export default function StockPage() {
       {/* Add Item Modal */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Ajouter au stock">
         <div className="space-y-4">
-          <div><label className="label">Type de matériel *</label>
+          <div>
+            <label className="label">Type de matériel *</label>
             <select className="select" value={newItem.item_type} onChange={e => setNewItem(p => ({ ...p, item_type: e.target.value }))}>
               <option value="Traceur GT06">Traceur GT06</option>
               <option value="Traceur JT808">Traceur JT808</option>
               <option value="Carte SIM">Carte SIM</option>
             </select>
           </div>
-          <div><label className="label">N° Série / IMEI *</label><input className="input" value={newItem.serial_number} onChange={e => setNewItem(p => ({ ...p, serial_number: e.target.value }))} placeholder="860123456789000" /></div>
+          <div>
+            <label className="label">N° Série / IMEI *</label>
+            <input className="input" value={newItem.serial_number} onChange={e => setNewItem(p => ({ ...p, serial_number: e.target.value }))} placeholder="860123456789000" />
+          </div>
           <button onClick={addItem} className="btn-primary w-full" disabled={!newItem.serial_number.trim()}>Ajouter au stock</button>
         </div>
       </Modal>
@@ -234,15 +290,24 @@ export default function StockPage() {
       {/* Edit Item Modal */}
       <Modal open={!!showEdit} onClose={() => setShowEdit(null)} title="Modifier l'élément">
         <div className="space-y-4">
-          <div><label className="label">Type de matériel</label>
+          <div>
+            <label className="label">Type de matériel</label>
             <select className="select" value={editItem.item_type || ''} onChange={e => setEditItem(p => ({ ...p, item_type: e.target.value }))}>
               <option value="Traceur GT06">Traceur GT06</option>
               <option value="Traceur JT808">Traceur JT808</option>
               <option value="Carte SIM">Carte SIM</option>
+              {/* Option dynamique au cas où le type enregistré n'est pas dans la liste par défaut */}
+              {editItem.item_type && !['Traceur GT06', 'Traceur JT808', 'Carte SIM'].includes(editItem.item_type) && (
+                <option value={editItem.item_type}>{editItem.item_type}</option>
+              )}
             </select>
           </div>
-          <div><label className="label">N° Série / IMEI</label><input className="input" value={editItem.serial_number || ''} onChange={e => setEditItem(p => ({ ...p, serial_number: e.target.value }))} /></div>
-          <div><label className="label">Statut</label>
+          <div>
+            <label className="label">N° Série / IMEI</label>
+            <input className="input" value={editItem.serial_number || ''} onChange={e => setEditItem(p => ({ ...p, serial_number: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label">Statut</label>
             <select className="select" value={editItem.status || 'En Stock'} onChange={e => setEditItem(p => ({ ...p, status: e.target.value }))}>
               <option value="En Stock">En Stock</option>
               <option value="Installé">Installé</option>
@@ -250,7 +315,10 @@ export default function StockPage() {
             </select>
           </div>
           {editItem.status === 'Installé' && (
-            <div><label className="label">Installé chez (nom client)</label><input className="input" value={editItem.installed_client_name || ''} onChange={e => setEditItem(p => ({ ...p, installed_client_name: e.target.value }))} /></div>
+            <div>
+              <label className="label">Installé chez (nom client)</label>
+              <input className="input" value={editItem.installed_client_name || ''} onChange={e => setEditItem(p => ({ ...p, installed_client_name: e.target.value }))} />
+            </div>
           )}
           <button onClick={updateItem} className="btn-primary w-full">Enregistrer les modifications</button>
         </div>
