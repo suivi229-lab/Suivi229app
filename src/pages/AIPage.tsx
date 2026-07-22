@@ -48,8 +48,12 @@ interface ComptableData {
   totalEntrees: number;
   totalSorties: number;
   resultatBrut: number;
-  tvaCollectee: number;   // 18 % sur recettes HT
-  ibicEstime: number;     // 30 % sur bénéfice
+  // Régime TPS Bénin (CGI art. 1084-18 à 1084-28)
+  // Exonération totale les 12 premiers mois (art. 1084-28)
+  tpsBase: number;        // 2% du CA annuel
+  tpsMinimum: number;     // 10 000 FCFA micro / 150 000 FCFA petite entreprise
+  tpsDue: number;         // max(tpsBase, tpsMinimum) — ou 0 si 1ère année
+  premiereAnnee: boolean; // exonération 1ère année activée
   loaded: boolean;
   error: string | null;
 }
@@ -81,10 +85,22 @@ async function fetchComptableData(year: number, month: number): Promise<Comptabl
   const totalEntrees = entrees.reduce((s, r) => s + r.amount, 0);
   const totalSorties = sorties.reduce((s, r) => s + r.amount, 0);
   const resultatBrut = totalEntrees - totalSorties;
-  const tvaCollectee  = Math.round(totalEntrees * 0.18);
-  const ibicEstime    = resultatBrut > 0 ? Math.round(resultatBrut * 0.30) : 0;
 
-  return { entrees, sorties, totalEntrees, totalSorties, resultatBrut, tvaCollectee, ibicEstime, loaded: true, error: null };
+  // TPS Bénin (CGI art. 1084-18) : 2% du CA annuel
+  // Micro-entreprise (CA ≤ 20M) : minimum 10 000 FCFA
+  // Petite entreprise (CA 20M–50M) : minimum 150 000 FCFA
+  // Nota : les données ici couvrent 1 mois — on projette sur 12 mois pour l'assiette annuelle
+  const caAnnuelEstime = totalEntrees * 12;
+  const tpsBase    = Math.round(caAnnuelEstime * 0.02);
+  const tpsMinimum = caAnnuelEstime > 20_000_000 ? 150_000 : 10_000;
+  const tpsDue     = Math.max(tpsBase, tpsMinimum);
+
+  return {
+    entrees, sorties, totalEntrees, totalSorties, resultatBrut,
+    tpsBase, tpsMinimum, tpsDue,
+    premiereAnnee: true, // par défaut activé (modifiable dans l'UI)
+    loaded: true, error: null,
+  };
 }
 
 /* ─── Utilitaire PDF (impression dans nouvelle fenêtre) ──────────────────────── */
@@ -256,7 +272,7 @@ function ResultBox({ text, onRegenerate }: { text: string; onRegenerate: () => v
     <div className="border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
         <div className="flex items-center gap-2 text-xs text-brand-600 dark:text-brand-400 font-medium">
-          <Sparkles className="w-3.5 h-3.5" />Généré par Gemini
+          <Sparkles className="w-3.5 h-3.5" />Généré par l'IA
         </div>
         <div className="flex items-center gap-3">
           <button onClick={onRegenerate} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
@@ -429,7 +445,7 @@ Utilise un ton professionnel et concis. Sois précis avec les chiffres fournis.`
         <div>
           <h3 className="font-semibold text-gray-900 dark:text-white">Rapport mensuel</h3>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Gemini analyse vos KPIs et rédige un rapport structuré prêt à partager.
+            L'IA analyse vos KPIs et rédige un rapport structuré prêt à partager.
           </p>
         </div>
         <button onClick={generate} disabled={loading}
@@ -579,7 +595,7 @@ Sois concis, factuel et orienté action. Évite les généralités.`;
         <div>
           <h3 className="font-semibold text-gray-900 dark:text-white">Analyse des tendances</h3>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Gemini détecte les anomalies, évalue les risques et propose des priorités d'action.
+            L'IA détecte les anomalies, évalue les risques et propose des priorités d'action.
           </p>
         </div>
         <button onClick={generate} disabled={loading}
@@ -633,9 +649,10 @@ function fmt(n: number) { return n.toLocaleString('fr-FR') + ' FCFA'; }
 
 function ComptableTab() {
   const now = new Date();
-  const [year,  setYear]  = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [cdata, setCdata] = useState<ComptableData | null>(null);
+  const [year,         setYear]         = useState(now.getFullYear());
+  const [month,        setMonth]        = useState(now.getMonth() + 1);
+  const [premiereAn,   setPremiereAn]   = useState(true); // exonération 1ère année
+  const [cdata,        setCdata]        = useState<ComptableData | null>(null);
   const [loadingData,  setLoadingData]  = useState(false);
   const [loadingAI,    setLoadingAI]    = useState(false);
   const [aiResult,     setAiResult]     = useState<string | null>(null);
@@ -657,32 +674,44 @@ function ComptableTab() {
         `  ${g.cat} : ${fmt(g.total)} (${g.items.length} op.)`).join('\n') || '  Aucune';
       const sortiesList = groupByCategory(cdata.sorties).map(g =>
         `  ${g.cat} : ${fmt(g.total)} (${g.items.length} op.)`).join('\n') || '  Aucune';
+      const caAnnuelEstime = cdata.totalEntrees * 12;
+      const catTPS = caAnnuelEstime <= 20_000_000 ? 'micro-entreprise' : 'petite entreprise';
 
-      const prompt = `Tu es un expert-comptable agréé spécialisé dans la fiscalité béninoise (régime OHADA, DGI Bénin).
+      const prompt = `Tu es un expert-comptable agréé spécialisé dans la fiscalité béninoise (Code Général des Impôts Bénin 2026, régime OHADA, DGI Bénin).
 
-Voici le bilan financier de l'entreprise **Suivi 229+** (société de tracking GPS de véhicules, Bénin) pour le mois de **${MOIS_FR[month-1]} ${year}** :
+Voici le bilan financier mensuel de l'entreprise **Suivi 229+** (société de tracking GPS de véhicules, Cotonou, Bénin) pour le mois de **${MOIS_FR[month-1]} ${year}** :
 
-## RECETTES (${fmt(cdata.totalEntrees)})
+## RÉGIME FISCAL APPLICABLE
+- Régime : **Taxe Professionnelle Synthétique (TPS)** — CGI art. 1084-18 à 1084-28
+- Catégorie estimée : **${catTPS}** (CA annuel projeté ≈ ${fmt(caAnnuelEstime)})
+- Statut 1ère année : **${premiereAn ? 'OUI — EXONÉRÉ de TPS (CGI art. 1084-28 : les 12 premiers mois d\'activité sont exemptés)' : 'NON — TPS applicable'}**
+- TVA : **NON applicable** (réservée aux entreprises dont le CA dépasse 50M FCFA/an)
+- IBIC : **NON applicable** (absorbé par la TPS pour ce régime)
+
+## RECETTES DU MOIS (${fmt(cdata.totalEntrees)})
 ${entreesList}
 
-## CHARGES (${fmt(cdata.totalSorties)})
+## CHARGES DU MOIS (${fmt(cdata.totalSorties)})
 ${sortiesList}
 
 ## INDICATEURS CALCULÉS
-- Résultat brut : ${fmt(cdata.resultatBrut)}
-- TVA collectée estimée (18%) : ${fmt(cdata.tvaCollectee)}
-- IBIC estimé (30% du bénéfice) : ${fmt(cdata.ibicEstime)}
+- Résultat brut du mois : ${fmt(cdata.resultatBrut)}
+- CA annuel projeté (×12) : ${fmt(caAnnuelEstime)}
+- TPS projetée (2% du CA annuel, minimum ${fmt(cdata.tpsMinimum)}) : ${fmt(cdata.tpsDue)}
+- TPS effectivement due ce cycle : **${premiereAn ? '0 FCFA (exonération 1ère année)' : fmt(cdata.tpsDue)}**
+- Déclaration TPS : annuelle, au plus tard le 30 avril de l'année suivante
 
-Sur la base de ces données, fournis un rapport d'audit comptable mensuel structuré avec :
+Sur la base de ces données, fournis un rapport d'audit comptable mensuel structuré :
 1. **Synthèse générale** : situation financière du mois en 3 phrases
-2. **Analyse des recettes** : commentaire sur la composition et la régularité des entrées
-3. **Analyse des charges** : commentaire sur les postes de dépenses, adéquation avec l'activité
-4. **Situation fiscale** : TVA à reverser à la DGI, acompte IBIC, autres obligations mensuelles au Bénin
-5. **Points d'attention** : anomalies, risques, irrégularités comptables à corriger
-6. **Recommandations** : 3 actions concrètes pour optimiser la situation fiscale et comptable
-7. **Conclusion** : bilan en une phrase et statut de conformité fiscale estimé
+2. **Analyse des recettes** : composition, régularité, catégories dominantes
+3. **Analyse des charges** : adéquation avec l'activité, postes à surveiller
+4. **Situation fiscale TPS** : rappel du régime, montant projeté, date de déclaration, conseils pour préparer la déclaration annuelle du 30 avril
+5. **Obligations annexes à surveiller** : VPS si salariés, TEOM (collecte ordures), TFU si local, autres contributions locales
+6. **Points d'attention** : anomalies, risques comptables, irrégularités à corriger
+7. **Recommandations** : 3 actions concrètes pour optimiser la situation et préparer la déclaration annuelle
+8. **Conclusion** : statut de conformité fiscale estimé
 
-Utilise un ton professionnel d'expert-comptable. Sois précis avec les montants en FCFA.`;
+Utilise un ton professionnel d'expert-comptable agréé béninois. Sois précis avec les montants en FCFA.`;
 
       setAiResult(await callGemini({ prompt }));
     } catch (e: any) { setError(e.message); }
@@ -702,36 +731,51 @@ Utilise un ton professionnel d'expert-comptable. Sois précis avec les montants 
       `<tr><td>${g.cat}</td><td class="right">${g.items.length}</td><td class="right">${fmt(g.total)}</td></tr>`
     ).join('');
 
+    const caAnnuelEstime = cdata.totalEntrees * 12;
+    const catTPS = caAnnuelEstime <= 20_000_000 ? 'Micro-entreprise (CA ≤ 20M FCFA)' : 'Petite entreprise (CA 20M–50M FCFA)';
+    const tpsDueStr = premiereAn ? '0 FCFA — EXONÉRÉ (1ère année d\'activité, CGI art. 1084-28)' : fmt(cdata.tpsDue);
+
     const html = `
       <h1>BILAN COMPTABLE MENSUEL</h1>
-      <p class="subtitle">Suivi 229+ — Tracking GPS Véhicules, Bénin<br/>Période : ${MOIS_FR[month-1]} ${year} | Généré le : ${new Date().toLocaleDateString('fr-FR')}</p>
+      <p class="subtitle">Suivi 229+ — Tracking GPS Véhicules, Cotonou, Bénin<br/>
+      Période : ${MOIS_FR[month-1]} ${year} &nbsp;|&nbsp; Généré le : ${new Date().toLocaleDateString('fr-FR')}</p>
 
-      <h2>1. RECETTES (PRODUITS)</h2>
-      <table><thead><tr><th>Catégorie</th><th class="right">Nb op.</th><th class="right">Montant</th></tr></thead><tbody>
-        ${lignesEntrees || '<tr><td colspan="3">Aucune recette</td></tr>'}
-        <tr class="total-row"><td>TOTAL RECETTES</td><td></td><td class="right">${fmt(cdata.totalEntrees)}</td></tr>
+      <h2>1. RÉGIME FISCAL APPLICABLE</h2>
+      <table><tbody>
+        <tr><td><strong>Régime d'imposition</strong></td><td>Taxe Professionnelle Synthétique (TPS) — CGI art. 1084-18 à 1084-28</td></tr>
+        <tr><td><strong>Catégorie</strong></td><td>${catTPS}</td></tr>
+        <tr><td><strong>TVA</strong></td><td>Non applicable (seuil d'assujettissement non atteint)</td></tr>
+        <tr><td><strong>IBIC</strong></td><td>Non applicable (absorbé par la TPS)</td></tr>
+        <tr><td><strong>Statut 1ère année</strong></td><td>${premiereAn ? '✓ Exonération totale TPS — 12 premiers mois (CGI art. 1084-28)' : 'Non — TPS applicable'}</td></tr>
+        <tr><td><strong>Déclaration annuelle</strong></td><td>À déposer avant le 30 avril de l'année suivante à la DGI</td></tr>
       </tbody></table>
 
-      <h2>2. CHARGES (DÉPENSES)</h2>
+      <h2>2. RECETTES (PRODUITS)</h2>
+      <table><thead><tr><th>Catégorie</th><th class="right">Nb op.</th><th class="right">Montant</th></tr></thead><tbody>
+        ${lignesEntrees || '<tr><td colspan="3">Aucune recette</td></tr>'}
+        <tr class="total-row"><td>TOTAL RECETTES DU MOIS</td><td></td><td class="right">${fmt(cdata.totalEntrees)}</td></tr>
+      </tbody></table>
+
+      <h2>3. CHARGES (DÉPENSES)</h2>
       <table><thead><tr><th>Catégorie</th><th class="right">Nb op.</th><th class="right">Montant</th></tr></thead><tbody>
         ${lignesSorties || '<tr><td colspan="3">Aucune charge</td></tr>'}
-        <tr class="total-row"><td>TOTAL CHARGES</td><td></td><td class="right">${fmt(cdata.totalSorties)}</td></tr>
+        <tr class="total-row"><td>TOTAL CHARGES DU MOIS</td><td></td><td class="right">${fmt(cdata.totalSorties)}</td></tr>
       </tbody></table>
 
       <div class="fiscal-box">
-        <h2>3. RÉSULTAT ET OBLIGATIONS FISCALES (estimations)</h2>
-        <div class="fiscal-line"><span>Résultat brut (Recettes − Charges)</span><span>${fmt(cdata.resultatBrut)}</span></div>
-        <div class="fiscal-line"><span>TVA collectée à reverser (18 % des recettes)</span><span>${fmt(cdata.tvaCollectee)}</span></div>
-        <div class="fiscal-line"><span>Acompte IBIC estimé (30 % du bénéfice)</span><span>${fmt(cdata.ibicEstime)}</span></div>
-        <div class="fiscal-line highlight"><span>TOTAL OBLIGATIONS FISCALES ESTIMÉES</span><span>${fmt(cdata.tvaCollectee + cdata.ibicEstime)}</span></div>
-        <div class="fiscal-line highlight"><span>RÉSULTAT NET APRÈS IMPÔT ESTIMÉ</span><span>${fmt(cdata.resultatBrut - cdata.ibicEstime)}</span></div>
+        <h2>4. RÉSULTAT ET SITUATION TPS</h2>
+        <div class="fiscal-line"><span>Résultat brut du mois (Recettes − Charges)</span><span>${fmt(cdata.resultatBrut)}</span></div>
+        <div class="fiscal-line"><span>CA annuel projeté (mois × 12)</span><span>${fmt(caAnnuelEstime)}</span></div>
+        <div class="fiscal-line"><span>TPS projetée (2% du CA annuel, min. ${fmt(cdata.tpsMinimum)})</span><span>${fmt(cdata.tpsDue)}</span></div>
+        <div class="fiscal-line highlight"><span>TPS EFFECTIVEMENT DUE</span><span>${tpsDueStr}</span></div>
+        <div class="fiscal-line highlight"><span>RÉSULTAT NET DU MOIS</span><span>${fmt(cdata.resultatBrut)}</span></div>
       </div>
 
       ${aiResult ? `<div class="ai-section"><strong>ANALYSE DE L'EXPERT COMPTABLE IA</strong>\n\n${aiResult}</div>` : ''}
 
       <div class="footer">
         Document généré automatiquement par Suivi 229+ — À valider par un expert-comptable agréé avant dépôt officiel à la DGI Bénin.<br/>
-        Régime fiscal de référence : OHADA / DGI Bénin — TVA 18 % — IBIC 30 %
+        Régime fiscal : TPS (CGI Bénin 2026, art. 1084-18) — Taux 2% du CA annuel — Déclaration : 30 avril de l'année N+1
       </div>`;
 
     printBilan(html, titre);
@@ -772,6 +816,19 @@ Utilise un ton professionnel d'expert-comptable. Sois précis avec les montants 
         </button>
       </div>
 
+      {/* Toggle première année */}
+      <label className="flex items-center gap-3 cursor-pointer select-none w-fit">
+        <div className="relative">
+          <input type="checkbox" className="sr-only" checked={premiereAn} onChange={e => setPremiereAn(e.target.checked)} />
+          <div className={`w-10 h-5 rounded-full transition-colors ${premiereAn ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
+          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${premiereAn ? 'translate-x-5' : ''}`} />
+        </div>
+        <div>
+          <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Exonération 1ère année (CGI art. 1084-28)</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Actif = TPS due = 0 FCFA. Désactivez dès la 2ème année.</p>
+        </div>
+      </label>
+
       {error && (
         <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 px-3 py-2 rounded-lg">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />{error}
@@ -781,15 +838,26 @@ Utilise un ton professionnel d'expert-comptable. Sois précis avec les montants 
       {/* Résultats comptables */}
       {cdata && (
         <div className="space-y-4">
+          {/* Badge exonération 1ère année */}
+          {premiereAn && (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700">
+              <span className="text-xl">✅</span>
+              <div>
+                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Exonération TPS — 1ère année d'activité</p>
+                <p className="text-xs text-emerald-600 dark:text-emerald-500 mt-0.5">CGI Bénin art. 1084-28 : aucune TPS due durant les 12 premiers mois. La déclaration annuelle sera à déposer avant le 30 avril {year + 1}.</p>
+              </div>
+            </div>
+          )}
+
           {/* Résumé chiffres clés */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {[
-              { label: 'Total recettes', value: fmt(cdata.totalEntrees), color: 'text-green-700 dark:text-green-400' },
-              { label: 'Total charges',  value: fmt(cdata.totalSorties),  color: 'text-red-600 dark:text-red-400' },
-              { label: 'Résultat brut',  value: fmt(cdata.resultatBrut),  color: cdata.resultatBrut >= 0 ? 'text-brand-700 dark:text-brand-400' : 'text-red-600 dark:text-red-400' },
-              { label: 'TVA à reverser (18%)', value: fmt(cdata.tvaCollectee), color: 'text-amber-700 dark:text-amber-400' },
-              { label: 'IBIC estimé (30%)',     value: fmt(cdata.ibicEstime),    color: 'text-amber-700 dark:text-amber-400' },
-              { label: 'Résultat net estimé',  value: fmt(cdata.resultatBrut - cdata.ibicEstime), color: (cdata.resultatBrut - cdata.ibicEstime) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400' },
+              { label: 'Recettes du mois',     value: fmt(cdata.totalEntrees), color: 'text-green-700 dark:text-green-400' },
+              { label: 'Charges du mois',       value: fmt(cdata.totalSorties), color: 'text-red-600 dark:text-red-400' },
+              { label: 'Résultat du mois',      value: fmt(cdata.resultatBrut), color: cdata.resultatBrut >= 0 ? 'text-brand-700 dark:text-brand-400' : 'text-red-600 dark:text-red-400' },
+              { label: 'CA annuel projeté',     value: fmt(cdata.totalEntrees * 12), color: 'text-gray-700 dark:text-gray-300' },
+              { label: 'TPS projetée (2% CA)',  value: fmt(cdata.tpsDue), color: 'text-amber-700 dark:text-amber-400' },
+              { label: 'TPS due (ce cycle)',    value: premiereAn ? 'EXONÉRÉ' : fmt(cdata.tpsDue), color: premiereAn ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400' },
             ].map(({ label, value, color }) => (
               <div key={label} className="bg-gray-50 dark:bg-gray-800/50 rounded-xl px-4 py-3 border border-gray-100 dark:border-gray-700">
                 <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
