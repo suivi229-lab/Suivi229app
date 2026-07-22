@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatDate, daysUntil, parseCSV, printElement, BUSINESS_INFO } from '../lib/utils';
 import Modal from '../components/Modal';
 import {
@@ -50,6 +51,7 @@ interface StockItem {
 type SubTab = 'clients' | 'subscriptions';
 
 export default function CRMPage() {
+  const { role } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('clients');
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -505,7 +507,7 @@ export default function CRMPage() {
                             <button onClick={() => setExpandedClient(isExpanded ? null : client.id)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
                               {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                             </button>
-                            <button onClick={() => deleteClient(client.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-500 hover:text-red-600" title="Supprimer"><Trash2 className="w-4 h-4" /></button>
+                            {role === 'Admin' && <button onClick={() => deleteClient(client.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-500 hover:text-red-600" title="Supprimer"><Trash2 className="w-4 h-4" /></button>}
                           </div>
                         </td>
                       </tr>
@@ -524,7 +526,7 @@ export default function CRMPage() {
                                     <div className="flex items-center gap-1 no-print">
                                       <button onClick={() => setShowAddSubscription(v.id)} className="btn-primary text-xs px-2 py-1"><CreditCard className="w-3 h-3" /> Abonnement</button>
                                       <button onClick={() => { setShowEditVehicle(v); setEditVehicle({ registration: v.registration, make_model: v.make_model || '' }); }} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-brand-600" title="Modifier"><Edit2 className="w-3 h-3" /></button>
-                                      <button onClick={() => deleteVehicle(v.id)} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 className="w-3 h-3" /></button>
+                                      {role === 'Admin' && <button onClick={() => deleteVehicle(v.id)} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 className="w-3 h-3" /></button>}
                                     </div>
                                   </div>
                                   {(v.subscriptions || []).length > 0 && (
@@ -536,7 +538,7 @@ export default function CRMPage() {
                                           <span>{getSubscriptionStatusBadge(s.status, s.end_date)}</span>
                                           <span className="text-gray-900 dark:text-white font-medium">{formatCurrency(s.annual_price)}</span>
                                           <button onClick={() => { setShowEditSubscription(s); setEditSubscription({ tracker_type: s.tracker_type, start_date: s.start_date, end_date: s.end_date, status: s.status, annual_price: s.annual_price }); }} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-brand-600 no-print" title="Modifier"><Edit2 className="w-3 h-3" /></button>
-                                          <button onClick={() => deleteSubscription(s.id)} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400 no-print"><Trash2 className="w-3 h-3" /></button>
+                                          {role === 'Admin' && <button onClick={() => deleteSubscription(s.id)} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400 no-print"><Trash2 className="w-3 h-3" /></button>}
                                         </div>
                                       ))}
                                     </div>
@@ -625,7 +627,7 @@ export default function CRMPage() {
                               </button>
                             )}
                             <button onClick={() => { setShowEditSubscription(sub); setEditSubscription({ tracker_type: sub.tracker_type, start_date: sub.start_date, end_date: sub.end_date, status: sub.status, annual_price: sub.annual_price }); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-brand-600" title="Modifier"><Edit2 className="w-4 h-4" /></button>
-                            <button onClick={() => deleteSubscription(sub.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-500 hover:text-red-600" title="Supprimer"><Trash2 className="w-4 h-4" /></button>
+                            {role === 'Admin' && <button onClick={() => deleteSubscription(sub.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-500 hover:text-red-600" title="Supprimer"><Trash2 className="w-4 h-4" /></button>}
                           </div>
                         </td>
                       </tr>

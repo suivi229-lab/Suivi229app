@@ -12,6 +12,7 @@ interface Stats {
   expiredCount: number;
   stockAvailable: number;
   monthlyRevenue: number;
+  annualRevenue: number;
   pendingInvoices: number;
 }
 
@@ -25,6 +26,7 @@ export default function Dashboard() {
     expiredCount: 0,
     stockAvailable: 0,
     monthlyRevenue: 0,
+    annualRevenue: 0,
     pendingInvoices: 0,
   });
   const [expiringList, setExpiringList] = useState<any[]>([]);
@@ -39,15 +41,17 @@ export default function Dashboard() {
     setLoading(true);
     console.log('[Dashboard] loadStats() — début des requêtes Supabase');
     try {
-      const [clients, vehicles, subs, stock, invoices, transactions] = await Promise.all([
+      const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
+      const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+
+      const [clients, vehicles, subs, stock, invoices, transactions, annualTransactions] = await Promise.all([
         supabase.from('clients').select('id', { count: 'exact', head: true }),
         supabase.from('vehicles').select('id', { count: 'exact', head: true }),
         supabase.from('subscriptions').select('*, vehicles(registration, clients(name))'),
         supabase.from('stock').select('status').eq('status', 'En Stock'),
         supabase.from('invoices').select('status').eq('status', 'En attente'),
-        supabase.from('transactions').select('amount, transaction_type, transaction_date')
-          .eq('transaction_type', 'Entrée')
-          .gte('transaction_date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]),
+        supabase.from('transactions').select('amount').eq('transaction_type', 'Entrée').gte('transaction_date', monthStart),
+        supabase.from('transactions').select('amount').eq('transaction_type', 'Entrée').gte('transaction_date', yearStart),
       ]);
 
       const errList: string[] = [];
@@ -56,7 +60,8 @@ export default function Dashboard() {
       if (subs.error)         { console.error('[Dashboard] ❌ subscriptions:', subs.error.message); errList.push(`subscriptions: ${subs.error.message} (${subs.error.code})`); }
       if (stock.error)        { console.error('[Dashboard] ❌ stock:', stock.error.message); errList.push(`stocks: ${stock.error.message} (${stock.error.code})`); }
       if (invoices.error)     { console.error('[Dashboard] ❌ invoices:', invoices.error.message); errList.push(`factures: ${invoices.error.message} (${invoices.error.code})`); }
-      if (transactions.error) { console.error('[Dashboard] ❌ transactions:', transactions.error.message); errList.push(`transactions: ${transactions.error.message} (${transactions.error.code})`); }
+      if (transactions.error)       { console.error('[Dashboard] ❌ transactions:', transactions.error.message); errList.push(`transactions: ${transactions.error.message} (${transactions.error.code})`); }
+      if (annualTransactions.error) { console.error('[Dashboard] ❌ annualTransactions:', annualTransactions.error.message); }
       setDbErrors(errList);
 
       console.log('[Dashboard] ✅ clients count:', clients.count, '| vehicles count:', vehicles.count, '| subs:', subs.data?.length ?? 0);
@@ -70,6 +75,7 @@ export default function Dashboard() {
       const expired = subData.filter((s: any) => s.status === 'Expiré' || daysUntil(s.end_date) < 0);
 
       const monthlyRev = (transactions.data || []).reduce((sum: number, t: any) => sum + Number(t.amount), 0);
+      const annualRev  = (annualTransactions.data || []).reduce((sum: number, t: any) => sum + Number(t.amount), 0);
 
       setStats({
         totalClients: clients.count || 0,
@@ -79,6 +85,7 @@ export default function Dashboard() {
         expiredCount: expired.length,
         stockAvailable: (stock.data || []).length,
         monthlyRevenue: monthlyRev,
+        annualRevenue: annualRev,
         pendingInvoices: (invoices.data || []).length,
       });
 
@@ -98,8 +105,9 @@ export default function Dashboard() {
     { label: 'Abonnements Actifs', value: stats.activeSubscriptions, icon: Package, color: 'accent' as const, page: 'crm' as const },
     { label: 'À Renouveler', value: stats.expiredCount + stats.expiringSubscriptions, icon: AlertTriangle, color: 'danger' as const, page: 'crm' as const },
     { label: 'Stock Disponible', value: stats.stockAvailable, icon: Package, color: 'accent' as const, page: 'stock' as const },
-    { label: "CA du mois", value: formatCurrency(stats.monthlyRevenue), icon: TrendingUp, color: 'accent' as const, page: 'billing' as const },
-    { label: 'Factures en attente', value: stats.pendingInvoices, icon: Receipt, color: 'brand' as const, page: 'billing' as const },
+    { label: `CA ${new Date().getFullYear()}`, value: formatCurrency(stats.annualRevenue), icon: TrendingUp, color: 'accent' as const, page: 'billing' as const },
+    { label: "CA du mois", value: formatCurrency(stats.monthlyRevenue), icon: TrendingUp, color: 'brand' as const, page: 'billing' as const },
+    { label: 'Factures en attente', value: stats.pendingInvoices, icon: Receipt, color: 'danger' as const, page: 'billing' as const },
   ];
 
   const colorMap = {

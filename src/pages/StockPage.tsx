@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import { parseCSV, printElement } from '../lib/utils';
 import Modal from '../components/Modal';
 import { Plus, Upload, Printer, Search, Trash2, Edit2 } from 'lucide-react';
@@ -14,6 +15,7 @@ interface StockItem {
 }
 
 export default function StockPage() {
+  const { role } = useAuth();
   const [items, setItems] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -186,7 +188,7 @@ export default function StockPage() {
                   <td className="table-cell no-print">
                     <div className="flex items-center gap-1">
                       <button onClick={() => { setShowEdit(item); setEditItem(item); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-brand-600"><Edit2 className="w-4 h-4" /></button>
-                      <button onClick={() => deleteItem(item.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-500 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                      {role === 'Admin' && <button onClick={() => deleteItem(item.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-500 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>}
                     </div>
                   </td>
                 </tr>
