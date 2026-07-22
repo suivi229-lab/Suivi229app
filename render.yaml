@@ -1,12 +1,9 @@
 services:
   - type: web
     name: suivi229app
-    runtime: node
-    buildCommand: rm -rf node_modules && npm ci --legacy-peer-deps && npm run build
-    startCommand: node server.js
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     envVars:
-      - key: NODE_VERSION
-        value: 20.19.0
       - key: VITE_SUPABASE_URL
         sync: false
       - key: VITE_SUPABASE_ANON_KEY
