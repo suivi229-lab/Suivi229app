@@ -186,12 +186,21 @@ export default function TeamPage() {
     const name = member.full_name || 'ce membre';
     setConfirm({
       title: 'Supprimer le membre',
-      message: `Supprimer définitivement "${name}" ? Le profil sera effacé. Cette action est irréversible.`,
+      message: `Supprimer définitivement "${name}" ? Le compte et le profil seront effacés. Cette action est irréversible.`,
       confirmLabel: 'Supprimer',
       variant: 'danger',
       onConfirm: async () => {
-        await supabase.from('profiles').delete().eq('id', member.id);
         setConfirm(null);
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch('/api/delete-member', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ memberId: member.id, adminToken: session?.access_token }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          alert(`Erreur : ${json.error ?? 'Impossible de supprimer ce membre.'}`);
+        }
         loadMembers();
       },
     });

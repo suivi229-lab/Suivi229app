@@ -157,6 +157,61 @@ app.post('/api/create-member', async (req, res) => {
   return res.json({ success: true, userId: newUser.id });
 });
 
+// ── /api/delete-member ───────────────────────────────────────────────────────
+app.post('/api/delete-member', async (req, res) => {
+  const { memberId, adminToken } = req.body ?? {};
+  const { supabaseUrl, serviceRoleKey } = getSupabaseConfig();
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY manquant.' });
+  }
+  if (!memberId) {
+    return res.status(400).json({ error: 'memberId requis.' });
+  }
+
+  const authHeaders = svcHeaders(serviceRoleKey);
+
+  // 1. Vérifier l'appelant
+  const callerRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: { 'apikey': serviceRoleKey, 'Authorization': `Bearer ${adminToken}` },
+  });
+  if (!callerRes.ok) return res.status(401).json({ error: 'Session invalide ou expirée.' });
+
+  const callerUser = await callerRes.json();
+
+  // 2. Vérifier que l'appelant est Admin
+  const profileRes = await fetch(
+    `${supabaseUrl}/rest/v1/profiles?id=eq.${callerUser.id}&select=role&limit=1`,
+    { headers: authHeaders },
+  );
+  const profiles = await profileRes.json();
+  const isOwner = callerUser.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
+  if (!profiles.length && !isOwner) {
+    return res.status(403).json({ error: 'Accès réservé aux administrateurs.' });
+  }
+  if (profiles.length && profiles[0].role !== 'Admin') {
+    return res.status(403).json({ error: 'Réservé aux administrateurs.' });
+  }
+
+  // 3. Empêcher l'admin de se supprimer lui-même
+  if (memberId === callerUser.id) {
+    return res.status(400).json({ error: 'Impossible de supprimer votre propre compte.' });
+  }
+
+  // 4. Supprimer l'utilisateur dans auth.users (cascade → profiles)
+  const deleteRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${memberId}`, {
+    method:  'DELETE',
+    headers: authHeaders,
+  });
+
+  if (!deleteRes.ok) {
+    const err = await deleteRes.json().catch(() => ({}));
+    return res.status(400).json({ error: err.message ?? 'Erreur lors de la suppression.' });
+  }
+
+  return res.json({ success: true });
+});
+
 // ── Fichiers statiques (build Vite) ──────────────────────────────────────────
 const distPath = join(__dirname, 'dist');
 app.use(express.static(distPath));
