@@ -57,8 +57,8 @@ export default function CRMPage() {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('clients');
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dbError, _setDbError] = useState<string | null>(null);
-  const [writeError, _setWriteError] = useState<string | null>(null);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [writeError, setWriteError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [expandedClient, setExpandedClient] = useState<string | null>(null);
   const [showAddClient, setShowAddClient] = useState(false);
@@ -99,7 +99,6 @@ export default function CRMPage() {
 
   async function loadClients() {
     setLoading(true);
-    console.log('[CRM] loadClients() — requête Supabase');
     try {
       const { data, error } = await supabase
         .from('clients')
@@ -107,8 +106,9 @@ export default function CRMPage() {
         .order('name');
       if (error) {
         console.error('[CRM] ❌ loadClients error:', error.code, error.message, error.hint ?? '');
+        setDbError(`Chargement clients : ${error.message}`);
       } else {
-        console.log('[CRM] ✅ clients chargés:', data?.length ?? 0);
+        setDbError(null);
       }
       setClients(data || []);
     } finally {
@@ -156,9 +156,10 @@ export default function CRMPage() {
       return;
     }
     setSubSubmitting(true);
+    setWriteError(null);
     try {
       const endDate = new Date(new Date(subStartDate).setFullYear(new Date(subStartDate).getFullYear() + 1)).toISOString().split('T')[0];
-      await supabase.from('subscriptions').insert({
+      const subPayload: Record<string, unknown> = {
         vehicle_id: subSelectedVehicleId,
         tracker_type: subTrackerType,
         start_date: subStartDate,
@@ -167,7 +168,18 @@ export default function CRMPage() {
         annual_price: Number(subPrice),
         sim_id: subSelectedSimId || null,
         installed_by: profile?.full_name ?? user?.email ?? null,
-      });
+      };
+      const { error: subErr } = await supabase.from('subscriptions').insert(subPayload);
+      if (subErr) {
+        // Fallback si colonne installed_by absente (migration non encore exécutée)
+        if (subErr.message?.includes('installed_by')) {
+          delete subPayload.installed_by;
+          const { error: e2 } = await supabase.from('subscriptions').insert(subPayload);
+          if (e2) throw new Error(e2.message);
+        } else {
+          throw new Error(subErr.message);
+        }
+      }
 
       if (subSelectedSimId) {
         const selectedClient = subClients.find(c => c.id === subSelectedClientId);
@@ -178,10 +190,9 @@ export default function CRMPage() {
       }
 
       setShowCreateSub(false);
-      loadClients();
-      loadAllSubscriptions();
-    } catch {
-      alert('Erreur lors de la création de l\'abonnement.');
+      await Promise.all([loadClients(), loadAllSubscriptions()]);
+    } catch (err: any) {
+      setWriteError(`Erreur création abonnement : ${err.message}`);
     } finally {
       setSubSubmitting(false);
     }
@@ -189,40 +200,72 @@ export default function CRMPage() {
 
   async function addClient() {
     if (!newClient.name.trim()) return;
-    await supabase.from('clients').insert({ name: newClient.name, phone: newClient.phone || null, email: newClient.email || null, city: newClient.city || null, created_by: profile?.full_name ?? user?.email ?? null });
+    setWriteError(null);
+    const { error } = await supabase.from('clients').insert({
+      name: newClient.name,
+      phone: newClient.phone || null,
+      email: newClient.email || null,
+      city: newClient.city || null,
+      created_by: profile?.full_name ?? user?.email ?? null,
+    });
+    if (error) {
+      // Si la colonne created_by n'existe pas encore, réessayer sans
+      if (error.message?.includes('created_by')) {
+        const { error: e2 } = await supabase.from('clients').insert({
+          name: newClient.name,
+          phone: newClient.phone || null,
+          email: newClient.email || null,
+          city: newClient.city || null,
+        });
+        if (e2) { setWriteError(`Erreur ajout client : ${e2.message}`); return; }
+      } else {
+        setWriteError(`Erreur ajout client : ${error.message}`);
+        return;
+      }
+    }
     setNewClient({ name: '', phone: '', email: '', city: '' });
     setShowAddClient(false);
-    loadClients();
+    await loadClients();
   }
 
   async function updateClient() {
     if (!showEditClient || !editClient.name.trim()) return;
-    await supabase.from('clients').update({
+    setWriteError(null);
+    const { error } = await supabase.from('clients').update({
       name: editClient.name,
       phone: editClient.phone || null,
       email: editClient.email || null,
       city: editClient.city || null,
     }).eq('id', showEditClient.id);
+    if (error) { setWriteError(`Erreur modification client : ${error.message}`); return; }
     setShowEditClient(null);
-    loadClients();
+    await loadClients();
   }
 
   async function addVehicle(clientId: string) {
     if (!newVehicle.registration.trim()) return;
-    await supabase.from('vehicles').insert({ client_id: clientId, registration: newVehicle.registration, make_model: newVehicle.make_model || null });
+    setWriteError(null);
+    const { error } = await supabase.from('vehicles').insert({
+      client_id: clientId,
+      registration: newVehicle.registration,
+      make_model: newVehicle.make_model || null,
+    });
+    if (error) { setWriteError(`Erreur ajout véhicule : ${error.message}`); return; }
     setNewVehicle({ registration: '', make_model: '' });
     setShowAddVehicle(null);
-    loadClients();
+    await loadClients();
   }
 
   async function updateVehicle() {
     if (!showEditVehicle || !editVehicle.registration.trim()) return;
-    await supabase.from('vehicles').update({
+    setWriteError(null);
+    const { error } = await supabase.from('vehicles').update({
       registration: editVehicle.registration,
       make_model: editVehicle.make_model || null,
     }).eq('id', showEditVehicle.id);
+    if (error) { setWriteError(`Erreur modification véhicule : ${error.message}`); return; }
     setShowEditVehicle(null);
-    loadClients();
+    await loadClients();
   }
 
   function computeStatus(endDateStr: string): string {
@@ -231,9 +274,10 @@ export default function CRMPage() {
   }
 
   async function addSubscription(vehicleId: string) {
+    setWriteError(null);
     const startDate = newSubscription.start_date;
     const endDate = new Date(new Date(startDate).setFullYear(new Date(startDate).getFullYear() + 1)).toISOString().split('T')[0];
-    await supabase.from('subscriptions').insert({
+    const payload: Record<string, unknown> = {
       vehicle_id: vehicleId,
       tracker_type: newSubscription.tracker_type,
       start_date: startDate,
@@ -241,25 +285,36 @@ export default function CRMPage() {
       status: computeStatus(endDate),
       annual_price: Number(newSubscription.annual_price),
       installed_by: profile?.full_name ?? user?.email ?? null,
-    });
+    };
+    const { error } = await supabase.from('subscriptions').insert(payload);
+    if (error) {
+      if (error.message?.includes('installed_by')) {
+        delete payload.installed_by;
+        const { error: e2 } = await supabase.from('subscriptions').insert(payload);
+        if (e2) { setWriteError(`Erreur ajout abonnement : ${e2.message}`); return; }
+      } else {
+        setWriteError(`Erreur ajout abonnement : ${error.message}`);
+        return;
+      }
+    }
     setShowAddSubscription(null);
     setNewSubscription({ tracker_type: 'GT06', start_date: new Date().toISOString().split('T')[0], annual_price: 75000 });
-    loadClients();
-    loadAllSubscriptions();
+    await Promise.all([loadClients(), loadAllSubscriptions()]);
   }
 
   async function updateSubscription() {
     if (!showEditSubscription) return;
-    await supabase.from('subscriptions').update({
+    setWriteError(null);
+    const { error } = await supabase.from('subscriptions').update({
       tracker_type: editSubscription.tracker_type,
       start_date: editSubscription.start_date,
       end_date: editSubscription.end_date,
       status: editSubscription.status,
       annual_price: Number(editSubscription.annual_price),
     }).eq('id', showEditSubscription.id);
+    if (error) { setWriteError(`Erreur modification abonnement : ${error.message}`); return; }
     setShowEditSubscription(null);
-    loadClients();
-    loadAllSubscriptions();
+    await Promise.all([loadClients(), loadAllSubscriptions()]);
   }
 
   async function renewSubscription() {
@@ -317,23 +372,26 @@ export default function CRMPage() {
 
   async function deleteClient(id: string) {
     if (!confirm('Supprimer ce client et tous ses véhicules/abonnements ?')) return;
-    await supabase.from('clients').delete().eq('id', id);
-    loadClients();
-    loadAllSubscriptions();
+    setWriteError(null);
+    const { error } = await supabase.from('clients').delete().eq('id', id);
+    if (error) { setWriteError(`Erreur suppression client : ${error.message}`); return; }
+    await Promise.all([loadClients(), loadAllSubscriptions()]);
   }
 
   async function deleteVehicle(id: string) {
     if (!confirm('Supprimer ce véhicule et ses abonnements ?')) return;
-    await supabase.from('vehicles').delete().eq('id', id);
-    loadClients();
-    loadAllSubscriptions();
+    setWriteError(null);
+    const { error } = await supabase.from('vehicles').delete().eq('id', id);
+    if (error) { setWriteError(`Erreur suppression véhicule : ${error.message}`); return; }
+    await Promise.all([loadClients(), loadAllSubscriptions()]);
   }
 
   async function deleteSubscription(id: string) {
     if (!confirm('Supprimer cet abonnement ?')) return;
-    await supabase.from('subscriptions').delete().eq('id', id);
-    loadClients();
-    loadAllSubscriptions();
+    setWriteError(null);
+    const { error } = await supabase.from('subscriptions').delete().eq('id', id);
+    if (error) { setWriteError(`Erreur suppression abonnement : ${error.message}`); return; }
+    await Promise.all([loadClients(), loadAllSubscriptions()]);
   }
 
   async function handleCSVImport(e: React.ChangeEvent<HTMLInputElement>) {

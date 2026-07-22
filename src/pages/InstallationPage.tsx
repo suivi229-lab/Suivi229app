@@ -78,7 +78,7 @@ export default function InstallationPage() {
       const invoiceNumber = generateInvoiceNumber();
 
       // 1. Create subscription (activates annual subscription +1 year)
-      await supabase.from('subscriptions').insert({
+      const subPayload: Record<string, unknown> = {
         vehicle_id: selectedVehicleId,
         tracker_type: trackerType,
         start_date: startDate,
@@ -88,7 +88,18 @@ export default function InstallationPage() {
         tracker_id: selectedTrackerId,
         sim_id: selectedSimId,
         installed_by: profile?.full_name ?? user?.email ?? null,
-      }).select().single();
+      };
+      const { error: subErr } = await supabase.from('subscriptions').insert(subPayload).select().single();
+      if (subErr) {
+        // Fallback si colonne installed_by absente (migration non encore exécutée)
+        if (subErr.message?.includes('installed_by')) {
+          delete subPayload.installed_by;
+          const { error: e2 } = await supabase.from('subscriptions').insert(subPayload).select().single();
+          if (e2) throw new Error(`Erreur création abonnement : ${e2.message}`);
+        } else {
+          throw new Error(`Erreur création abonnement : ${subErr.message}`);
+        }
+      }
 
       // 2. Update tracker status to "Installé"
       await supabase.from('stock').update({
