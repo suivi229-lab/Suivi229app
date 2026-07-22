@@ -112,7 +112,7 @@ async function callGemini(payload: { prompt?: string; context?: string; contents
     body: JSON.stringify(payload),
   });
   const json = await res.json();
-  if (!res.ok) throw new Error(json.error ?? 'Erreur Gemini');
+  if (!res.ok) throw new Error(json.error ?? 'Erreur IA');
   return json.text as string;
 }
 
