@@ -1,0 +1,70 @@
+Cloning from https://github.com/suivi229-lab/Suivi229app
+==> Checking out commit d3a54d452ccf15a1baefe5f55bca592b0ea574ee in branch main
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 790B done
+#1 DONE 0.0s
+#2 [internal] load metadata for docker.io/library/node:20-alpine
+#2 ...
+#3 [auth] library/node:pull render-prod/docker-mirror-repository/library/node:pull token for us-west1-docker.pkg.dev
+#3 DONE 0.0s
+#2 [internal] load metadata for docker.io/library/node:20-alpine
+#2 DONE 4.8s
+#4 [internal] load .dockerignore
+#4 transferring context: 2B done
+#4 DONE 0.0s
+#5 [internal] load build context
+#5 transferring context: 2.31MB 0.0s done
+#5 DONE 0.0s
+#6 [builder 1/6] FROM docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+#6 resolve docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 done
+#6 extracting sha256:6a0ac1617861a677b045b7ff88545213ec31c0ff08763195a70a4a5adda577bb 0.1s done
+#6 DONE 4.5s
+#6 [builder 1/6] FROM docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+#6 extracting sha256:4feea04c154301db6f4a496efa397b3db96603b1c009c797cfdde77bea8b3287
+#6 extracting sha256:4feea04c154301db6f4a496efa397b3db96603b1c009c797cfdde77bea8b3287 0.7s done
+#6 DONE 5.2s
+#6 [builder 1/6] FROM docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+#6 extracting sha256:b2cbbfe903b0821005780971ddc5892edcc4ce74c5a48d82e1d2b382edac3122 0.0s done
+#6 extracting sha256:fff4e2c1b189bf87d63ad8bd07f7f4eb288d6f2b6a07a8bb44c60e8c075d2096 done
+#6 DONE 5.2s
+#7 [builder 2/6] WORKDIR /app
+#7 DONE 0.0s
+#8 [builder 3/6] COPY package*.json ./
+#8 DONE 0.0s
+#9 [builder 4/6] RUN npm ci --legacy-peer-deps
+#9 70.84 npm notice
+#9 70.84 npm notice New major version of npm available! 10.8.2 -> 12.0.1
+#9 70.84 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.1
+#9 70.84 npm notice To update run: npm install -g npm@12.0.1
+#9 70.84 npm notice
+#9 70.84 npm error Exit handler never called!
+#9 70.84 npm error This is an error with npm itself. Please report this error at:
+#9 70.84 npm error   <https://github.com/npm/cli/issues>
+#9 70.84 npm error A complete log of this run can be found in: /root/.npm/_logs/2026-07-22T09_55_42_121Z-debug-0.log
+#9 DONE 70.9s
+#10 [builder 5/6] COPY . .
+#10 DONE 0.1s
+#11 [builder 6/6] RUN npm run build
+#11 0.146 
+#11 0.146 > vite-react-typescript-starter@0.0.0 build
+#11 0.146 > vite build
+#11 0.146 
+#11 0.148 sh: vite: not found
+#11 ERROR: process "/bin/sh -c npm run build" did not complete successfully: exit code: 127
+------
+ > [builder 6/6] RUN npm run build:
+0.146 
+0.146 > vite-react-typescript-starter@0.0.0 build
+0.146 > vite build
+0.146 
+0.148 sh: vite: not found
+------
+Dockerfile:9
+--------------------
+   7 |     
+   8 |     COPY . .
+   9 | >>> RUN npm run build
+  10 |     
+  11 |     # ── Étape 2 : image de production légère ─────────────────────────────────────
+--------------------
+error: failed to solve: process "/bin/sh -c npm run build" did not complete successfully: exit code: 127
