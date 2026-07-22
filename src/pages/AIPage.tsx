@@ -104,9 +104,8 @@ async function fetchComptableData(year: number, month: number): Promise<Comptabl
   };
 }
 
-/* ─── Utilitaire PDF — délègue à printHTML (compatible desktop + mobile) ─── */
-function printBilan(htmlContent: string, _title: string) {
-  // Ajouter CSS spécifique au bilan comptable autour du contenu
+/* ─── Utilitaire PDF — délègue à printHTML (téléchargement fichier, compatible mobile) ─── */
+function printBilan(htmlContent: string, title: string) {
   const wrapped = `
     <style>
       h1 { font-size: 17px; font-weight: 700; text-align: center; margin-bottom: 4px; color: #1a3a6b; }
@@ -129,7 +128,8 @@ function printBilan(htmlContent: string, _title: string) {
     </style>
     ${htmlContent}
   `;
-  printHTML(wrapped);
+  const filename = `bilan-comptable-${title.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}.html`;
+  printHTML(wrapped, filename);
 }
 
 /* ─── Data fetcher ───────────────────────────────────────────────────────────── */

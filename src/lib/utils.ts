@@ -151,68 +151,56 @@ const PRINT_CSS = `
 `;
 
 /**
- * Imprime un élément DOM — fonctionne sur desktop ET mobile Android/iOS.
- * Injecte le contenu dans la page courante et appelle window.print() directement
- * (les Blob/popup URLs sont inaccessibles au service d'impression Android).
+ * Génère un fichier HTML téléchargeable à partir d'un élément DOM.
+ * Le fichier s'ouvre directement avec WPS, Adobe Acrobat, Chrome, etc.
+ * sur mobile Android (pas de print spooler — téléchargement natif).
  */
-export function printElement(elementId: string, _docTitle = 'Suivi 229+') {
+export function printElement(elementId: string, filename = 'rapport-suivi229.html') {
   const content = document.getElementById(elementId);
   if (!content) return;
 
-  // Clone propre
+  // Clone propre — sans affecter la page en cours
   const clone = content.cloneNode(true) as HTMLElement;
-  // 1. Remplacer les boutons par leur contenu texte (évite de perdre les noms
-  //    de clients qui sont parfois wrappés dans un <button> cliquable)
+  // 1. Remplacer les boutons par leur contenu texte (noms clients wrappés dans <button>)
   clone.querySelectorAll('button').forEach(btn => {
     const span = document.createElement('span');
     span.innerHTML = btn.innerHTML;
     btn.replaceWith(span);
   });
-  // 2. Supprimer icônes SVG et colonnes/éléments non destinés à l'impression
+  // 2. Supprimer icônes SVG et colonnes action (.no-print)
   clone.querySelectorAll('.no-print, svg').forEach(el => el.remove());
 
-  printHTML(clone.innerHTML);
+  printHTML(clone.innerHTML, filename);
 }
 
 /**
- * Imprime du contenu HTML arbitraire (chaîne) — même technique que printElement.
- * À utiliser depuis AIPage et tout autre endroit qui génère du HTML manuellement.
+ * Télécharge du contenu HTML comme fichier — s'ouvre avec l'app choisie
+ * par l'utilisateur (WPS Office, Chrome, Adobe, etc.) sur Android.
+ * Fonctionne également sur desktop (téléchargement standard).
  */
-export function printHTML(htmlContent: string) {
-  // ── 1. Injecter le CSS d'impression ───────────────────────────────────────
-  let styleEl = document.getElementById('__print_style__') as HTMLStyleElement | null;
-  if (!styleEl) {
-    styleEl = document.createElement('style');
-    styleEl.id = '__print_style__';
-    document.head.appendChild(styleEl);
-  }
-  styleEl.textContent = `
-    @media print {
-      /* Masquer toute l'app sauf le contenu à imprimer */
-      body > *:not(#__print_root__) { display: none !important; }
-      #__print_root__ { display: block !important; }
-      ${PRINT_CSS}
-    }
-    @media screen {
-      #__print_root__ { display: none !important; }
-    }
-  `;
+export function printHTML(htmlContent: string, filename = 'rapport-suivi229.html') {
+  const fullHtml = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Suivi 229+</title>
+  <style>
+    ${PRINT_CSS}
+    body { padding: 20mm 18mm; }
+    @media print { body { padding: 0; } @page { margin: 12mm 15mm; size: A4 portrait; } }
+  </style>
+</head>
+<body>${htmlContent}</body>
+</html>`;
 
-  // ── 2. Injecter le contenu ─────────────────────────────────────────────────
-  let printRoot = document.getElementById('__print_root__');
-  if (!printRoot) {
-    printRoot = document.createElement('div');
-    printRoot.id = '__print_root__';
-    document.body.appendChild(printRoot);
-  }
-  printRoot.innerHTML = htmlContent;
-
-  // ── 3. Imprimer (sur la page courante → compatible Android/iOS) ───────────
-  window.print();
-
-  // ── 4. Nettoyer après fermeture du dialogue ────────────────────────────────
-  setTimeout(() => {
-    if (printRoot) printRoot.innerHTML = '';
-    if (styleEl)  styleEl.textContent = '';
-  }, 3000);
+  const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 8000);
 }

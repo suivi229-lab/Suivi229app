@@ -58,6 +58,7 @@ export default function StockPage() {
   }
 
   async function updateItem() {
+    if (role !== 'Admin') return;
     if (!showEdit) return;
     await supabase.from('stock').update({
       item_type: editItem.item_type,
@@ -140,8 +141,8 @@ export default function StockPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{items.length} éléments enregistrés</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={() => setShowAdd(true)} className="btn-primary"><Plus className="w-4 h-4" /> Ajouter</button>
-          <button onClick={() => setShowImport(true)} className="btn-secondary"><Upload className="w-4 h-4" /> Importer CSV</button>
+          {role === 'Admin' && <button onClick={() => setShowAdd(true)} className="btn-primary"><Plus className="w-4 h-4" /> Ajouter</button>}
+          {role === 'Admin' && <button onClick={() => setShowImport(true)} className="btn-secondary"><Upload className="w-4 h-4" /> Importer CSV</button>}
           <button onClick={() => printElement('stock-table')} className="btn-outline"><Printer className="w-4 h-4" /> Imprimer</button>
         </div>
       </div>
@@ -187,7 +188,7 @@ export default function StockPage() {
                   <td className="table-cell">{item.installed_client_name || '-'}</td>
                   <td className="table-cell no-print">
                     <div className="flex items-center gap-1">
-                      <button onClick={() => { setShowEdit(item); setEditItem(item); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-brand-600"><Edit2 className="w-4 h-4" /></button>
+                      {role === 'Admin' && <button onClick={() => { setShowEdit(item); setEditItem(item); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-brand-600"><Edit2 className="w-4 h-4" /></button>}
                       {role === 'Admin' && <button onClick={() => deleteItem(item.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-500 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>}
                     </div>
                   </td>
