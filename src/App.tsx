@@ -12,7 +12,7 @@ import LoginPage from './pages/LoginPage';
 import { Loader2, Menu, MapPin } from 'lucide-react';
 
 function AppContent() {
-  const { currentPage, sidebarOpen } = useApp();
+  const { currentPage, sidebarOpen, setSidebarOpen } = useApp();
   const { session, loading, canAccess } = useAuth();
 
   // Écran de chargement pendant la vérification de session
