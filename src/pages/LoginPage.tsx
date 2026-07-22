@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { LogIn, Eye, EyeOff, Sun, Moon, Loader2 } from 'lucide-react';
+import { LogIn, Eye, EyeOff, Sun, Moon, Loader2, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
-  const { signIn, resetPassword } = useAuth();
+  const { signIn, resetPassword, isDeactivated } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
   const [email, setEmail] = useState('');
@@ -61,6 +61,14 @@ export default function LoginPage() {
         </div>
 
         <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-8">
+          {/* Bannière compte désactivé */}
+          {isDeactivated && (
+            <div className="flex items-start gap-3 px-4 py-3 mb-5 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
+              <AlertCircle size={18} className="mt-0.5 shrink-0" />
+              <span>Votre compte a été désactivé. Contactez l'administrateur.</span>
+            </div>
+          )}
+
           {mode === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-5">
               {/* Email */}
