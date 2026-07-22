@@ -1,1 +1,2 @@
 - [GitHub push workflow](github-push.md) — toujours pousser sur origin/main après chaque modification ; l'utilisateur teste via Render (pas le preview Replit).
+- [Schéma profiles et pièges](profiles-schema.md) — updated_at absent de profiles ; erreurs Supabase silencieuses si colonne inexistante ; RLS SELECT = true pour authenticated.
