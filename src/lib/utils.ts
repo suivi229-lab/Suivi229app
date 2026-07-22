@@ -159,9 +159,17 @@ export function printElement(elementId: string, _docTitle = 'Suivi 229+') {
   const content = document.getElementById(elementId);
   if (!content) return;
 
-  // Clone propre : supprime icônes SVG, boutons et colonnes action
+  // Clone propre
   const clone = content.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll('.no-print, svg, button').forEach(el => el.remove());
+  // 1. Remplacer les boutons par leur contenu texte (évite de perdre les noms
+  //    de clients qui sont parfois wrappés dans un <button> cliquable)
+  clone.querySelectorAll('button').forEach(btn => {
+    const span = document.createElement('span');
+    span.innerHTML = btn.innerHTML;
+    btn.replaceWith(span);
+  });
+  // 2. Supprimer icônes SVG et colonnes/éléments non destinés à l'impression
+  clone.querySelectorAll('.no-print, svg').forEach(el => el.remove());
 
   printHTML(clone.innerHTML);
 }
