@@ -1,0 +1,36 @@
+#10 71.21 npm ERR! code ENOTFOUND
+#10 71.21 npm ERR! syscall getaddrinfo
+#10 71.21 npm ERR! errno ENOTFOUND
+#10 71.22 npm ERR! network request to http://package-firewall.replit.local/npm/wrappy/-/wrappy-1.0.2.tgz failed, reason: getaddrinfo ENOTFOUND package-firewall.replit.local
+#10 71.22 npm ERR! network This is a problem related to network connectivity.
+#10 71.22 npm ERR! network In most cases you are behind a proxy or have bad network settings.
+#10 71.22 npm ERR! network 
+#10 71.22 npm ERR! network If you are behind a proxy, please make sure that the
+#10 71.22 npm ERR! network 'proxy' config is set properly.  See: 'npm help config'
+#10 71.22 
+#10 71.22 npm ERR! A complete log of this run can be found in: /root/.npm/_logs/2026-07-22T10_04_39_492Z-debug-0.log
+#10 ERROR: process "/bin/sh -c npm install --legacy-peer-deps" did not complete successfully: exit code: 1
+------
+ > [builder 5/7] RUN npm install --legacy-peer-deps:
+71.21 npm ERR! syscall getaddrinfo
+71.21 npm ERR! errno ENOTFOUND
+71.22 npm ERR! network request to http://package-firewall.replit.local/npm/wrappy/-/wrappy-1.0.2.tgz failed, reason: getaddrinfo ENOTFOUND package-firewall.replit.local
+71.22 npm ERR! network This is a problem related to network connectivity.
+71.22 npm ERR! network In most cases you are behind a proxy or have bad network settings.
+71.22 npm ERR! network 
+71.22 npm ERR! network If you are behind a proxy, please make sure that the
+71.22 npm ERR! network 'proxy' config is set properly.  See: 'npm help config'
+71.22 
+71.22 npm ERR! A complete log of this run can be found in: /root/.npm/_logs/2026-07-22T10_04_39_492Z-debug-0.log
+------
+Dockerfile:9
+--------------------
+   7 |     
+   8 |     COPY package*.json ./
+   9 | >>> RUN npm install --legacy-peer-deps
+  10 |     
+  11 |     COPY . .
+--------------------
+error: failed to solve: process "/bin/sh -c npm install --legacy-peer-deps" did not complete successfully: exit code: 1
+error: exit status 1
+Need better ways to work with logs? Try theRender C
