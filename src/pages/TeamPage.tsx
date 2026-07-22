@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import Modal from '../components/Modal';
 import {
@@ -64,11 +64,28 @@ export default function TeamPage() {
   const [editRole, setEditRole] = useState<UserRole>('Technicien');
   const [editName, setEditName] = useState('');
 
-  useEffect(() => { loadMembers(); }, []);
+  // Garantit que le profil DB de l'admin existe avant de charger la liste.
+  // Sans ça, is_admin() renvoie false → RLS bloque tout → liste vide.
+  const profileEnsured = useRef(false);
+  useEffect(() => {
+    if (profileEnsured.current) return;
+    profileEnsured.current = true;
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.access_token) { loadMembers(); return; }
+      fetch('/api/ensure-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminToken: session.access_token }),
+      })
+        .catch(() => { /* silencieux — loadMembers s'en charge */ })
+        .finally(() => loadMembers());
+    });
+  }, []);
 
   async function loadMembers() {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('profiles')
       .select('id, full_name, role, email, is_active, updated_at')
       .order('role');
