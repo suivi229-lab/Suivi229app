@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: suivi229app
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: node server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 22.0.0
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: OWNER_EMAIL
+        value: gbeffansylvain@gmail.com
