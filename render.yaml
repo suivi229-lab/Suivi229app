@@ -14,3 +14,6 @@ services:
         sync: false
       - key: OWNER_EMAIL
         value: gbeffansylvain@gmail.com
+    dockerBuildArgs:
+      - VITE_SUPABASE_URL
+      - VITE_SUPABASE_ANON_KEY

@@ -2,6 +2,12 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# Variables Vite disponibles au moment du build (intégrées dans le bundle JS)
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+
 # Forcer le registry public npm (package-lock.json Replit contient des URLs internes)
 RUN npm config set registry https://registry.npmjs.org
 
