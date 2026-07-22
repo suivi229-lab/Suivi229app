@@ -2,11 +2,11 @@ services:
   - type: web
     name: suivi229app
     runtime: node
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --legacy-peer-deps && npm run build
     startCommand: node server.js
     envVars:
       - key: NODE_VERSION
-        value: 22.0.0
+        value: 20.19.0
       - key: VITE_SUPABASE_URL
         sync: false
       - key: VITE_SUPABASE_ANON_KEY
