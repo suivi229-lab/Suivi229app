@@ -8,6 +8,7 @@ import StockPage from './pages/StockPage';
 import BillingPage from './pages/BillingPage';
 import InstallationPage from './pages/InstallationPage';
 import TeamPage from './pages/TeamPage';
+import AIPage from './pages/AIPage';
 import LoginPage from './pages/LoginPage';
 import { Loader2, Menu, MapPin } from 'lucide-react';
 
@@ -39,6 +40,7 @@ function AppContent() {
     billing: <BillingPage />,
     installation: <InstallationPage />,
     team: <TeamPage />,
+    ai: <AIPage />,
   };
 
   const activePage = canAccess(currentPage) ? currentPage : 'dashboard';

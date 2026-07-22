@@ -18,6 +18,7 @@ import {
   Eye,
   TrendingUp,
   UserCog,
+  Sparkles,
 } from 'lucide-react';
 
 const allNavItems = [
@@ -27,6 +28,7 @@ const allNavItems = [
   { id: 'billing' as const, label: 'Facturation', icon: Receipt },
   { id: 'installation' as const, label: 'Nouvelle Installation', icon: Zap },
   { id: 'team' as const, label: "Gestion de l'équipe", icon: UserCog },
+  { id: 'ai' as const, label: 'IA Gemini', icon: Sparkles },
 ];
 
 const roleLabels: Record<string, { label: string; icon: React.ElementType; color: string }> = {

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 
-type Page = 'dashboard' | 'crm' | 'stock' | 'billing' | 'installation' | 'team';
+type Page = 'dashboard' | 'crm' | 'stock' | 'billing' | 'installation' | 'team' | 'ai';
 
 interface AppContextType {
   currentPage: Page;

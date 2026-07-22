@@ -309,6 +309,44 @@ app.post('/api/delete-member', async (req, res) => {
   return res.json({ success: true });
 });
 
+// ── /api/gemini ──────────────────────────────────────────────────────────────
+app.post('/api/gemini', async (req, res) => {
+  const { prompt, context, contents } = req.body ?? {};
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return res.status(503).json({ error: 'Clé API Gemini non configurée. Ajoutez GEMINI_API_KEY dans les secrets.' });
+  }
+  try {
+    let requestContents;
+    if (contents && Array.isArray(contents)) {
+      requestContents = contents;
+    } else {
+      const fullPrompt = context ? `${context}\n\n---\n\n${prompt}` : (prompt ?? '');
+      requestContents = [{ parts: [{ text: fullPrompt }] }];
+    }
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: requestContents,
+          generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+          systemInstruction: {
+            parts: [{ text: 'Tu es l\'assistant IA de Suivi 229+, une plateforme de gestion de tracking GPS de véhicules au Bénin. Réponds toujours en français, de façon concise et professionnelle.' }]
+          }
+        }),
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message ?? 'Erreur API Gemini');
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    return res.json({ text });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Fichiers statiques (build Vite) ──────────────────────────────────────────
 const distPath = join(__dirname, 'dist');
 app.use(express.static(distPath));

@@ -38,10 +38,10 @@ interface AuthContextType {
 }
 
 const PAGE_PERMISSIONS: Record<UserRole, string[]> = {
-  Admin: ['dashboard', 'crm', 'stock', 'billing', 'installation', 'team'],
+  Admin: ['dashboard', 'crm', 'stock', 'billing', 'installation', 'team', 'ai'],
   Technicien: ['dashboard', 'crm', 'stock', 'installation'],
   Observateur: ['dashboard'],
-  Investisseur: ['dashboard'],
+  Investisseur: ['dashboard', 'ai'],
 };
 
 const AuthContext = createContext<AuthContextType>({
