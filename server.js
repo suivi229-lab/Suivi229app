@@ -157,6 +157,103 @@ app.post('/api/create-member', async (req, res) => {
   return res.json({ success: true, userId: newUser.id });
 });
 
+// ── /api/toggle-member-active ────────────────────────────────────────────────
+app.post('/api/toggle-member-active', async (req, res) => {
+  const { memberId, isActive, adminToken } = req.body ?? {};
+  const { supabaseUrl, serviceRoleKey } = getSupabaseConfig();
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY manquant.' });
+  }
+  if (!memberId || typeof isActive !== 'boolean') {
+    return res.status(400).json({ error: 'memberId et isActive requis.' });
+  }
+
+  const authHeaders = svcHeaders(serviceRoleKey);
+
+  // Vérifier l'appelant
+  const callerRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: { 'apikey': serviceRoleKey, 'Authorization': `Bearer ${adminToken}` },
+  });
+  if (!callerRes.ok) return res.status(401).json({ error: 'Session invalide ou expirée.' });
+
+  const callerUser = await callerRes.json();
+  const profileRes = await fetch(
+    `${supabaseUrl}/rest/v1/profiles?id=eq.${callerUser.id}&select=role&limit=1`,
+    { headers: authHeaders },
+  );
+  const profiles = await profileRes.json();
+  const isOwner = callerUser.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
+  if (!profiles.length && !isOwner) return res.status(403).json({ error: 'Accès réservé aux administrateurs.' });
+  if (profiles.length && profiles[0].role !== 'Admin') return res.status(403).json({ error: 'Réservé aux administrateurs.' });
+
+  // Empêcher l'admin de se désactiver lui-même
+  if (memberId === callerUser.id && !isActive) {
+    return res.status(400).json({ error: 'Impossible de désactiver votre propre compte.' });
+  }
+
+  const updateRes = await fetch(
+    `${supabaseUrl}/rest/v1/profiles?id=eq.${memberId}`,
+    {
+      method: 'PATCH',
+      headers: { ...authHeaders, 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ is_active: isActive }),
+    },
+  );
+
+  if (!updateRes.ok) {
+    const err = await updateRes.json().catch(() => ({}));
+    return res.status(400).json({ error: err.message ?? 'Erreur lors de la mise à jour.' });
+  }
+
+  return res.json({ success: true });
+});
+
+// ── /api/reset-member-password ───────────────────────────────────────────────
+app.post('/api/reset-member-password', async (req, res) => {
+  const { memberId, newPassword, adminToken } = req.body ?? {};
+  const { supabaseUrl, serviceRoleKey } = getSupabaseConfig();
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY manquant.' });
+  }
+  if (!memberId || !newPassword || newPassword.length < 6) {
+    return res.status(400).json({ error: 'memberId et newPassword (≥ 6 caractères) requis.' });
+  }
+
+  const authHeaders = svcHeaders(serviceRoleKey);
+
+  // Vérifier l'appelant
+  const callerRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: { 'apikey': serviceRoleKey, 'Authorization': `Bearer ${adminToken}` },
+  });
+  if (!callerRes.ok) return res.status(401).json({ error: 'Session invalide ou expirée.' });
+
+  const callerUser = await callerRes.json();
+  const profileRes = await fetch(
+    `${supabaseUrl}/rest/v1/profiles?id=eq.${callerUser.id}&select=role&limit=1`,
+    { headers: authHeaders },
+  );
+  const profiles = await profileRes.json();
+  const isOwner = callerUser.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
+  if (!profiles.length && !isOwner) return res.status(403).json({ error: 'Accès réservé aux administrateurs.' });
+  if (profiles.length && profiles[0].role !== 'Admin') return res.status(403).json({ error: 'Réservé aux administrateurs.' });
+
+  // Mettre à jour le mot de passe via Admin API
+  const updateRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${memberId}`, {
+    method: 'PUT',
+    headers: authHeaders,
+    body: JSON.stringify({ password: newPassword }),
+  });
+
+  if (!updateRes.ok) {
+    const err = await updateRes.json().catch(() => ({}));
+    return res.status(400).json({ error: err.message ?? 'Erreur lors de la mise à jour du mot de passe.' });
+  }
+
+  return res.json({ success: true });
+});
+
 // ── /api/delete-member ───────────────────────────────────────────────────────
 app.post('/api/delete-member', async (req, res) => {
   const { memberId, adminToken } = req.body ?? {};

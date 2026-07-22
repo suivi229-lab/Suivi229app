@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import Modal from '../components/Modal';
 import {
   Plus, Users, Shield, Wrench, Eye, TrendingUp,
-  Edit2, Trash2, RefreshCw, UserX, UserCheck, AlertTriangle,
+  Edit2, Trash2, RefreshCw, UserX, UserCheck, AlertTriangle, KeyRound,
 } from 'lucide-react';
 
 type UserRole = 'Admin' | 'Technicien' | 'Observateur' | 'Investisseur';
@@ -62,6 +62,10 @@ export default function TeamPage() {
   const [form, setForm] = useState({ name: '', role: 'Technicien' as UserRole, email: '', password: '' });
   const [editRole, setEditRole] = useState<UserRole>('Technicien');
   const [editName, setEditName] = useState('');
+  const [showReset, setShowReset] = useState<TeamMember | null>(null);
+  const [resetPwd, setResetPwd] = useState('');
+  const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [resetError, setResetError] = useState('');
 
   // Garantit que le profil DB de l'admin existe avant de charger la liste.
   // Sans ça, is_admin() renvoie false → RLS bloque tout → liste vide.
@@ -160,6 +164,18 @@ export default function TeamPage() {
     loadMembers();
   }
 
+  async function callToggleActive(memberId: string, nextActive: boolean) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch('/api/toggle-member-active', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memberId, isActive: nextActive, adminToken: session?.access_token }),
+    });
+    const json = await res.json();
+    if (!res.ok) alert(`Erreur : ${json.error ?? 'Impossible de modifier le statut.'}`);
+    loadMembers();
+  }
+
   async function toggleActive(member: TeamMember) {
     const nextActive = !isActive(member);
     const name = member.full_name || 'ce membre';
@@ -171,14 +187,32 @@ export default function TeamPage() {
         confirmLabel: 'Désactiver',
         variant: 'warning',
         onConfirm: async () => {
-          await supabase.from('profiles').update({ is_active: false }).eq('id', member.id);
           setConfirm(null);
-          loadMembers();
+          await callToggleActive(member.id, false);
         },
       });
     } else {
-      await supabase.from('profiles').update({ is_active: true }).eq('id', member.id);
-      loadMembers();
+      await callToggleActive(member.id, true);
+    }
+  }
+
+  async function handleResetPassword() {
+    if (!showReset || resetPwd.length < 6) return;
+    setResetSubmitting(true);
+    setResetError('');
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch('/api/reset-member-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memberId: showReset.id, newPassword: resetPwd, adminToken: session?.access_token }),
+    });
+    const json = await res.json();
+    setResetSubmitting(false);
+    if (!res.ok) {
+      setResetError(json.error ?? 'Erreur lors de la mise à jour.');
+    } else {
+      setShowReset(null);
+      setResetPwd('');
     }
   }
 
@@ -284,6 +318,13 @@ export default function TeamPage() {
               title={active ? 'Désactiver le compte' : 'Réactiver le compte'}
             >
               {active ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => { setShowReset(member); setResetPwd(''); setResetError(''); }}
+              className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-500 hover:text-blue-600 transition-colors"
+              title="Réinitialiser le mot de passe"
+            >
+              <KeyRound className="w-4 h-4" />
             </button>
             <button
               onClick={() => deleteMember(member)}
@@ -442,6 +483,50 @@ export default function TeamPage() {
                 }`}
               >
                 {confirm.confirmLabel}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Modal Reset mot de passe ── */}
+      <Modal open={!!showReset} onClose={() => { setShowReset(null); setResetPwd(''); setResetError(''); }} title="Réinitialiser le mot de passe">
+        {showReset && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Nouveau mot de passe pour <strong>{showReset.full_name || showReset.email}</strong>.
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                Nouveau mot de passe <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="password"
+                className="input"
+                value={resetPwd}
+                onChange={e => setResetPwd(e.target.value)}
+                placeholder="Minimum 6 caractères"
+                autoFocus
+              />
+            </div>
+            {resetError && (
+              <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
+                {resetError}
+              </p>
+            )}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => { setShowReset(null); setResetPwd(''); setResetError(''); }}
+                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleResetPassword}
+                disabled={resetSubmitting || resetPwd.length < 6}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+              >
+                {resetSubmitting ? 'Mise à jour…' : 'Enregistrer'}
               </button>
             </div>
           </div>

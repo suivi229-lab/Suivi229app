@@ -16,6 +16,7 @@ interface Profile {
   id: string;
   role: UserRole;
   full_name?: string | null;
+  email?: string | null;
   is_active?: boolean | null;
 }
 
@@ -136,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Race the DB query against a timeout so it can never hang forever
     const queryPromise = supabase
       .from('profiles')
-      .select('id, role, full_name, is_active')
+      .select('id, role, full_name, email, is_active')
       .eq('id', userId)
       .single();
 
